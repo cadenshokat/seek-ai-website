@@ -1,0 +1,7 @@
+project_id = "vgagxbxecfpvkctdasxw"
+
+[functions.competitor-chat]
+verify_jwt = false
+
+[functions.export-chat-history]
+verify_jwt = false
