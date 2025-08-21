@@ -132,40 +132,35 @@ export default function PromptItem() {
         setRuns(runList);
 
         if (runList.length) {
-          const runIds = runList.map((r) => r.run_id);
-          const { data: sm, error: smErr } = await supabase
-            .from("source_mentions")
-            .select("run_id,source_id")
-            .in("run_id", runIds);
-          if (smErr) throw smErr;
+          const rows: { id: string; url: string }[] = [];
+          const seen = new Set<string>();
 
-          const sourceIds = Array.from(new Set((sm || []).map((x: any) => x.source_id)));
-          let srcMap: Record<string, string> = {};
-          if (sourceIds.length) {
-            const { data: srcs, error: srcErr } = await supabase
-              .from("sources")
-              .select("id,url")
-              .in("id", sourceIds);
-            if (srcErr) throw srcErr;
-            (srcs || []).forEach((s: any) => {
-              try {
-                srcMap[s.id] = new URL(s.url).hostname.replace(/^www\./, "");
-              } catch {
-                srcMap[s.id] = s.url;
-              }
+          const { data: sources, error: source_error } = await supabase
+            .from('all_sources')
+            .select('*')
+            .eq('prompt_id', promptId)
+            .gte("date", startISO)
+            .lte("date", endISO);
+
+            if (source_error) throw source_error;
+            (sources || []).forEach((r: any) => {
+              if (!seen.has(r.id)) { seen.add(r.id); rows.push(r); }
             });
-          }
+          
 
           const domainCount: Record<string, number> = {};
-          (sm || []).forEach((x: any) => {
-            const d = srcMap[x.source_id] || "unknown";
-            domainCount[d] = (domainCount[d] || 0) + 1;
-          });
-          const list = Object.entries(domainCount)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 10)
-            .map(([domain, count]) => ({ domain, count }));
-          setSources(list);
+            rows.forEach(({ url }) => {
+              const dom = url;
+              domainCount[dom] = (domainCount[dom] || 0) + 1;
+            });
+
+            const list = Object.entries(domainCount)
+              .sort((a, b) => b[1] - a[1])
+              .slice(0, 10)
+              .map(([domain, count]) => ({ domain, count }));
+
+            setSources(list);
+
         } else {
           setSources([]);
         }
