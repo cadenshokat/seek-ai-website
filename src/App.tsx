@@ -7,7 +7,7 @@ import { Layout } from "./components/Layout";
 import { Dashboard } from "./components/Dashboard";
 import { Prompts } from "./components/pages/Prompts";
 import { Chats } from "./components/pages/Chats";
-import { ChatDetail } from "./components/pages/ChatDetail";
+import ChatItem from "./components/pages/ChatDetail";
 import { Sources } from "./components/pages/Sources";
 import { Competitors } from "./components/pages/Competitors";
 import { Tags } from "./components/pages/Tags";
@@ -33,7 +33,7 @@ const App = () => (
             <Route path="/prompts/:promptId" element={<PromptItem />} />
             <Route path="/prompts/:promptId/sources/:sourceId" element={<SourceDetail />} />
             <Route path="/chats" element={<Chats />} />
-            <Route path="/chats/:chatId" element={<ChatDetail />} />
+            <Route path="/chats/:id" element={<ChatItem />} />
             <Route path="/sources" element={<Sources />} />
             <Route path="/competitors" element={<Competitors />} />
             <Route path="/tags" element={<Tags />} />
