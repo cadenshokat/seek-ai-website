@@ -43,7 +43,7 @@ export function AppSidebar() {
       
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+          <SidebarGroupLabel className="text-xs font-medium text-gray-500 tracking-wider mb-2">
             General
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -54,7 +54,7 @@ export function AppSidebar() {
                     <NavLink 
                       to={item.url} 
                       className={({ isActive }) => 
-                        `flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        `flex items-center space-x-3 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
                           isActive 
                             ? 'bg-gray-100 text-gray-900' 
                             : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -83,7 +83,7 @@ export function AppSidebar() {
                     <NavLink 
                       to={item.url} 
                       className={({ isActive }) => 
-                        `flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                        `flex items-center space-x-3 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
                           isActive 
                             ? 'bg-gray-100 text-gray-900' 
                             : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -111,7 +111,7 @@ export function AppSidebar() {
                   <NavLink 
                     to="/billing" 
                     className={({ isActive }) => 
-                      `flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      `flex items-center space-x-3 px-3 py-2 rounded-md text-xs font-medium transition-colors ${
                         isActive 
                           ? 'bg-gray-100 text-gray-900' 
                           : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'

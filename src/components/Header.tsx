@@ -14,8 +14,10 @@ import {
 const routeNames: Record<string, string> = {
   '/': 'Dashboard',
   '/prompts': 'Prompts',
+  '/prompts/': 'Item',
   '/sources': 'Sources',
   '/competitors': 'Competitors',
+  '/chats': 'Chats',
   '/tags': 'Tags',
   '/people': 'People',
   '/workspace': 'Workspace',
