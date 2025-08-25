@@ -391,7 +391,10 @@ export default function PromptItem() {
             </div>
 
             {runs.map((r) => (
-              <div key={r.run_id} className="grid grid-cols-12 gap-2 text-sm py-3 hover:bg-gray-50 rounded">
+              <Link
+                to={`/chats/${encodeURIComponent(r.run_id)}`}
+                className="grid grid-cols-12 gap-2 text-sm py-3 hover:bg-gray-50 rounded w-full"
+              >
                 <div className="col-span-6">
                   <p className="line-clamp-2 text-gray-900">{r.snippet}</p>
                 </div>
@@ -399,7 +402,7 @@ export default function PromptItem() {
                 <div className="col-span-4 text-center text-gray-600">
                   {new Date(r.created).toLocaleString()}
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </Card>

@@ -6,6 +6,7 @@ import { DailyVisibilityData } from '@/hooks/useDailyVisibility';
 interface BrandMetric {
   id: string;
   name: string;
+  logo: string;
   position: number;
   sentiment: number;
   visibility: number;
@@ -44,6 +45,7 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
       return {
         id: entityId,
         name: brand?.name || 'Unknown',
+        logo: brand?.logo || 'None',
         position: index + 1,
         sentiment: 70 + Math.random() * 20, // Mock sentiment data
         visibility: Math.round(visibility),
@@ -105,10 +107,11 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
                 </td>
                 <td className="py-2">
                   <div className="flex items-center space-x-2">
-                    {metric.color && (
-                      <div 
-                        className="w-3 h-3 rounded-full" 
-                        style={{ backgroundColor: metric.color }}
+                    {metric.logo && (
+                      <img 
+                        className="w-5 h-5 rounded-full" 
+                        src={metric.logo}
+                        alt={metric.name}
                       />
                     )}
                     <span className="text-xs font-medium text-gray-900">
