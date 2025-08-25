@@ -16,6 +16,7 @@ export function Dashboard() {
   const { selectedModel, getSelectedModelName } = useModels();
   const { selectedRange } = useTimeRange();
   const { data: dailyVisibilityData, loading: dailyVisibilityLoading } = useDailyVisibility();
+  const { data: allVisibilityData, loading: allVisibilityLoading } = useDailyVisibility({ ignoreBrandFilter: true });
   const { data: recentMentionsData, loading: recentMentionsLoading } = useRecentMentions();
 
   useEffect(() => {
@@ -34,7 +35,7 @@ export function Dashboard() {
     <div className="space-y-6">
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] items-stretch gap-6">
         <div className="min-h-full">
-          <VisibilityChart data={dailyVisibilityData} loading={dailyVisibilityLoading} />
+          <VisibilityChart data={allVisibilityData} loading={allVisibilityLoading} selectedBrand={selectedBrand}/>
         </div>
         
         <Separator orientation="vertical" className="hidden lg:block" />
@@ -54,7 +55,7 @@ export function Dashboard() {
         <Separator orientation="vertical" className="hidden lg:block" />
 
         <div className="min-h-full">
-          <VisibilityPieChart data={dailyVisibilityData} loading={dailyVisibilityLoading} />
+          <VisibilityPieChart data={allVisibilityData} loading={allVisibilityLoading} selectedBrand={selectedBrand}/>
         </div>
       </div>
     </div>

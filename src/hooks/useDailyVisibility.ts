@@ -14,7 +14,7 @@ export interface DailyVisibilityData {
   platform_id?: string;
 }
 
-export function useDailyVisibility() {
+export function useDailyVisibility(opts?: { ignoreBrandFilter?: boolean }) {
   const [data, setData] = useState<DailyVisibilityData[]>([]);
   const [loading, setLoading] = useState(true);
   const { selectedBrand } = useBrands();
@@ -26,7 +26,7 @@ export function useDailyVisibility() {
 
     async function fetchDailyVisibility() {
       if (isCancelled) return;
-      
+
       setLoading(true);
       try {
         let query = supabase
@@ -36,37 +36,28 @@ export function useDailyVisibility() {
           .lte('day', selectedRange.end.toISOString().split('T')[0])
           .order('day');
 
-        if (selectedBrand) {
+        if (selectedBrand && !opts?.ignoreBrandFilter) {
           query = query.eq('entity_id', selectedBrand);
         }
-
         if (selectedModel) {
           query = query.eq('platform_id', selectedModel);
         }
 
         const { data: visibilityData, error } = await query;
-
         if (error) throw error;
         if (isCancelled) return;
 
         setData(visibilityData || []);
       } catch (error) {
-        if (!isCancelled) {
-          console.error('Error fetching daily visibility data:', error);
-        }
+        if (!isCancelled) console.error('Error fetching daily visibility data:', error);
       } finally {
-        if (!isCancelled) {
-          setLoading(false);
-        }
+        if (!isCancelled) setLoading(false);
       }
     }
 
     fetchDailyVisibility();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [selectedBrand, selectedModel, selectedRange]);
+    return () => { isCancelled = true; };
+  }, [selectedBrand, selectedModel, selectedRange, opts?.ignoreBrandFilter]);
 
   return { data, loading };
 }
