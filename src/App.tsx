@@ -8,13 +8,14 @@ import { Dashboard } from "./components/Dashboard";
 import { Prompts } from "./components/pages/Prompts";
 import { Chats } from "./components/pages/Chats";
 import ChatItem from "./components/pages/ChatDetail";
-import { Sources } from "./components/pages/Sources";
+import Sources from "./components/pages/Sources";
 import { Competitors } from "./components/pages/Competitors";
 import { Tags } from "./components/pages/Tags";
 import { Workspace } from "./components/pages/Workspace";
 import PromptItem from "./components/pages/PromptItem";
 import { SourceDetail } from "./components/pages/SourceDetail";
 import { Optimization } from "./components/pages/Optimization";
+import Billing from "@/components/pages/Billing"
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -40,7 +41,7 @@ const App = () => (
             <Route path="/people" element={<div className="p-8 text-center text-gray-500">People section coming soon</div>} />
             <Route path="/workspace" element={<Workspace />} />
             <Route path="/company" element={<div className="p-8 text-center text-gray-500">Company section coming soon</div>} />
-            <Route path="/billing" element={<div className="p-8 text-center text-gray-500">Billing section coming soon</div>} />
+            <Route path="/billing" element={<Billing />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Layout>
