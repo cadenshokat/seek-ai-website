@@ -4,13 +4,7 @@ import { Plus, ArrowUpDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -20,6 +14,7 @@ import { useBrands } from "@/hooks/useBrands";
 import { useModels } from "@/hooks/useModels";
 import { useTimeRange } from "@/hooks/useTimeRange";
 import { useToast } from "@/hooks/use-toast";
+import { buildPromptMetrics, BuiltMetrics } from "@/lib/promptMetrics";
 
 interface PromptRow {
   id: string;
@@ -34,8 +29,8 @@ type TabKey = "active" | "inactive" | "suggested";
 type SortKey = "prompt" | "created_at" | "position" | "sentiment" | "visibility";
 type SortDir = "asc" | "desc";
 
-type PMRow = {
-  day: string;              
+export type PMRow = {
+  day: string;
   prompt_id: string;
   model_id: string | null;
   entity_type: string | null;
@@ -48,41 +43,32 @@ type PMRow = {
 type PromptWithMetrics = PromptRow & {
   _mentionCount?: number;
   _avgPosition?: number | null;
-  _avgSentiment01?: number | null;   
-  _visibilityPct?: number;          
+  _avgSentiment01?: number | null;
+  _visibilityPct?: number;
+  _topBrands?: { id: string; name: string; logo?: string | null; color?: string | null; mentions: number; sharePct: number }[];
 };
 
-
-function toISO(d: Date) {
-  return new Date(d).toISOString();
-}
-
-function sentimentTo01(score: number | null | undefined): number | null {
-  if (score == null) return null;
-  return Math.round(((score + 1) / 2) * 100);
+function toISODate(d: Date) {
+  return d.toISOString().split("T")[0];
 }
 
 function classNames(...xs: (string | false | undefined)[]) {
   return xs.filter(Boolean).join(" ");
 }
 
-
 export function Prompts() {
   const navigate = useNavigate();
   const { toast } = useToast();
-
-  const { selectedBrand, getSelectedBrandName } = useBrands();
-  const { selectedModel, getSelectedModelName } = useModels();
+  const { selectedBrand, getBrandOptions } = useBrands();
+  const { selectedModel } = useModels();
   const { selectedRange } = useTimeRange();
 
   const [activeTab, setActiveTab] = useState<TabKey>("active");
   const [loading, setLoading] = useState(false);
   const [prompts, setPrompts] = useState<PromptRow[]>([]);
-  const [metricsByPrompt, setMetricsByPrompt] = useState<Record<string, { mentionCount: number; avgPosition: number | null; avgSentiment01: number | null;}>>({});
-
+  const [metricsByPrompt, setMetricsByPrompt] = useState<BuiltMetrics>({});
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newPrompt, setNewPrompt] = useState({ prompt: "", topic: "", is_active: true });
-
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -91,15 +77,12 @@ export function Prompts() {
       setLoading(true);
       try {
         let q = supabase.from("prompts").select("*").order("created_at", { ascending: false });
-
         if (activeTab === "active") q = q.eq("is_active", true);
         if (activeTab === "inactive") q = q.eq("is_active", false);
-
         const { data, error } = await q;
         if (error) throw error;
         setPrompts(data || []);
-      } catch (e) {
-        console.error(e);
+      } catch {
         toast({ title: "Error", description: "Failed to load prompts", variant: "destructive" });
         setPrompts([]);
       } finally {
@@ -107,89 +90,43 @@ export function Prompts() {
       }
     };
     fetchPrompts();
-  }, [activeTab, selectedBrand, toast]);
+  }, [activeTab, toast]);
 
   useEffect(() => {
     const fetchMetrics = async () => {
-      if (!selectedBrand) {
-        setMetricsByPrompt({});
-        return;
-      }
-
       try {
-        const startISO = toISO(selectedRange.start);
-        const endISO = toISO(selectedRange.end);
-
+        const start = toISODate(selectedRange.start);
+        const end = toISODate(selectedRange.end);
         let q = supabase
           .from("prompt_mentions")
           .select("day,prompt_id,model_id,entity_type,entity_id,mention_count,avg_position,avg_sentiment_score")
-          .gte("day", startISO)
-          .lte("day", endISO)
-          .eq("entity_id", selectedBrand);
-
-        if (selectedModel) {
-          q = q.eq("model_id", selectedModel);
-        }
-
+          .gte("day", start)
+          .lte("day", end);
+        if (selectedModel) q = q.eq("model_id", selectedModel);
         const { data, error } = await q;
         if (error) throw error;
-
         const rows = (data || []) as PMRow[];
-
-        const agg: Record<string, { mc: number; posSum: number; posW: number; sentSum: number; sentW: number }> = {};
-        for (const r of rows) {
-          const key = r.prompt_id;
-          const mc = Number(r.mention_count || 0);
-          const pos = r.avg_position ?? null;
-          const sent = r.avg_sentiment_score ?? null;
-
-          if (!agg[key]) agg[key] = { mc: 0, posSum: 0, posW: 0, sentSum: 0, sentW: 0 };
-          agg[key].mc += mc;
-
-          if (pos != null) { agg[key].posSum += pos * mc; agg[key].posW += mc; }
-          if (sent != null) { agg[key].sentSum += sent * mc; agg[key].sentW += mc; }
-        }
-
-        const out: Record<string, { mentionCount: number; avgPosition: number | null; avgSentiment01: number | null }> = {};
-        Object.entries(agg).forEach(([pid, v]) => {
-          const avgPos = v.posW ? v.posSum / v.posW : null;
-          const avgSent = v.sentW ? v.sentSum / v.sentW : null;
-          out[pid] = {
-            mentionCount: v.mc,
-            avgPosition: avgPos,
-            avgSentiment01: sentimentTo01(avgSent),
-          };
-        });
-
-        setMetricsByPrompt(out);
-      } catch (e) {
-        console.error(e);
+        const built = buildPromptMetrics(rows, selectedBrand, getBrandOptions);
+        setMetricsByPrompt(built);
+      } catch {
         setMetricsByPrompt({});
       }
     };
-
     fetchMetrics();
-  }, [selectedBrand, selectedModel, selectedRange]);
+  }, [selectedBrand, selectedModel, selectedRange, getBrandOptions]);
 
   const rowsWithMetrics: PromptWithMetrics[] = useMemo(() => {
-    const mapped = prompts.map((p) => {
+    return prompts.map((p) => {
       const m = metricsByPrompt[p.id];
       return {
         ...p,
-        _mentionCount: m?.mentionCount ?? 0,
+        _mentionCount: m?.mentionCountBrand ?? 0,
         _avgPosition: m?.avgPosition ?? null,
         _avgSentiment01: m?.avgSentiment01 ?? null,
-        _visibilityPct: 0,
+        _visibilityPct: m?.visibilityPct ?? 0,
+        _topBrands: m?.topBrands ?? [],
       };
     });
-
-    const maxMentions = Math.max(1, ...mapped.map((r) => r._mentionCount ?? 0));
-    mapped.forEach((r) => {
-      const pct = Math.round(((r._mentionCount || 0) / maxMentions) * 100);
-      r._visibilityPct = pct;
-    });
-
-    return mapped;
   }, [prompts, metricsByPrompt]);
 
   const promptsSorted = useMemo(() => {
@@ -197,7 +134,6 @@ export function Prompts() {
     copy.sort((a, b) => {
       let va: string | number = "";
       let vb: string | number = "";
-
       switch (sortKey) {
         case "prompt":
           va = a.prompt || "";
@@ -220,7 +156,6 @@ export function Prompts() {
           vb = b._visibilityPct ?? 0;
           break;
       }
-
       if (va < vb) return sortDir === "asc" ? -1 : 1;
       if (va > vb) return sortDir === "asc" ? 1 : -1;
       return 0;
@@ -230,11 +165,11 @@ export function Prompts() {
 
   const toggleSort = (key: SortKey) => {
     if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    else { setSortKey(key); setSortDir(key === "prompt" ? "asc" : "desc"); }
+    else {
+      setSortKey(key);
+      setSortDir(key === "prompt" ? "asc" : "desc");
+    }
   };
-
-  const activeCount = prompts.filter((p) => p.is_active).length;
-  const inactiveCount = prompts.filter((p) => !p.is_active).length;
 
   return (
     <div className="space-y-6">
@@ -262,12 +197,12 @@ export function Prompts() {
                 />
               </div>
               <div>
-                <Label htmlFor="topic">Topic (optional)</Label>
+                <Label htmlFor="topic">Tags</Label>
                 <Input
                   id="topic"
                   value={newPrompt.topic}
                   onChange={(e) => setNewPrompt({ ...newPrompt, topic: e.target.value })}
-                  placeholder="Enter topic/tag"
+                  placeholder="Enter tags"
                   className="mt-1"
                 />
               </div>
@@ -283,26 +218,27 @@ export function Prompts() {
                 <Button variant="outline" onClick={() => setIsAddDialogOpen(false)}>
                   Cancel
                 </Button>
-                <Button onClick={async () => {
-                  if (!newPrompt.prompt.trim()) return toast({ title: "Prompt required", description: "Please enter a prompt." });
-                  try {
-                    const payload: Partial<PromptRow> = {
-                      prompt: newPrompt.prompt.trim(),
-                      topic: newPrompt.topic?.trim() || null,
-                      is_active: newPrompt.is_active,
-                      brand_id: selectedBrand || null,
-                    };
-                    const { data, error } = await supabase.from("prompts").insert(payload).select("*").single();
-                    if (error) throw error;
-                    setPrompts((prev) => [data as PromptRow, ...prev]);
-                    setIsAddDialogOpen(false);
-                    setNewPrompt({ prompt: "", topic: "", is_active: true });
-                    toast({ title: "Added", description: "New prompt created." });
-                  } catch (e) {
-                    console.error(e);
-                    toast({ title: "Error", description: "Failed to add prompt", variant: "destructive" });
-                  }
-                }}>
+                <Button
+                  onClick={async () => {
+                    if (!newPrompt.prompt.trim()) return toast({ title: "Prompt required", description: "Please enter a prompt." });
+                    try {
+                      const payload: Partial<PromptRow> = {
+                        prompt: newPrompt.prompt.trim(),
+                        topic: newPrompt.topic?.trim() || null,
+                        is_active: newPrompt.is_active,
+                        brand_id: selectedBrand || null,
+                      };
+                      const { data, error } = await supabase.from("prompts").insert(payload).select("*").single();
+                      if (error) throw error;
+                      setPrompts((prev) => [data as PromptRow, ...prev]);
+                      setIsAddDialogOpen(false);
+                      setNewPrompt({ prompt: "", topic: "", is_active: true });
+                      toast({ title: "Added", description: "New prompt created." });
+                    } catch {
+                      toast({ title: "Error", description: "Failed to add prompt", variant: "destructive" });
+                    }
+                  }}
+                >
                   Add Prompt
                 </Button>
               </div>
@@ -311,7 +247,6 @@ export function Prompts() {
         </Dialog>
       </div>
 
-      {/* Tabs */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
         <TabsList className="grid w-fit grid-cols-3">
           <TabsTrigger value="active">Active</TabsTrigger>
@@ -344,7 +279,6 @@ export function Prompts() {
           />
         </TabsContent>
 
-        {/* Suggested placeholder */}
         <TabsContent value="suggested" className="mt-6">
           <div className="text-sm text-gray-500">Suggested prompts coming soon.</div>
         </TabsContent>
@@ -353,19 +287,10 @@ export function Prompts() {
   );
 }
 
-// --- Table -------------------------------------------------------------------
-
 function SentimentPill({ n }: { n: number | null | undefined }) {
   if (n == null) return <span className="text-sm text-gray-400">—</span>;
-  const color =
-    n >= 70 ? "bg-emerald-100 text-emerald-700" :
-    n >= 40 ? "bg-gray-100 text-gray-700" :
-              "bg-rose-100 text-rose-700";
-  return (
-    <span className={classNames("inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold", color)}>
-      {n}
-    </span>
-  );
+  const color = n >= 70 ? "bg-emerald-100 text-emerald-700" : n >= 40 ? "bg-gray-100 text-gray-700" : "bg-rose-100 text-rose-700";
+  return <span className={classNames("inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold", color)}>{n}</span>;
 }
 
 function VisibilityBar({ pct }: { pct: number | undefined }) {
@@ -373,12 +298,23 @@ function VisibilityBar({ pct }: { pct: number | undefined }) {
   return (
     <div className="flex items-center gap-2 min-w-[130px]">
       <div className="h-2 w-24 bg-gray-200 rounded-full overflow-hidden">
-        <div
-          className="h-2 bg-gray-900 rounded-full"
-          style={{ width: `${v}%` }}
-        />
+        <div className="h-2 bg-gray-900 rounded-full" style={{ width: `${v}%` }} />
       </div>
       <span className="text-sm text-gray-700">{v}%</span>
+    </div>
+  );
+}
+
+function TopBrandsCell({ items }: { items: NonNullable<PromptWithMetrics["_topBrands"]> }) {
+  return (
+    <div className="flex -space-x-2">
+      {items.slice(0, 3).map((b, i) =>
+        b.logo ? (
+          <img key={b.id + i} src={b.logo} alt={b.name} className="h-6 w-6 rounded-full border border-white object-contain bg-white" />
+        ) : (
+          <div key={b.id + i} className="h-6 w-6 rounded-full border border-white" style={{ backgroundColor: b.color || "#e5e7eb" }} />
+        )
+      )}
     </div>
   );
 }
@@ -424,13 +360,12 @@ function PromptTable({
               </th>
               <th className="text-left py-3 px-4 font-medium text-gray-600 text-sm">
                 <button onClick={() => onSort("visibility")} className="flex items-center gap-1 hover:text-gray-900">
-                  <span>Visibility</span>
+                  <span>Visibility %</span>
                   <ArrowUpDown className="h-3 w-3" />
                 </button>
               </th>
               <th className="text-left py-3 px-4 font-medium text-gray-600 text-sm">Top</th>
               <th className="text-left py-3 px-4 font-medium text-gray-600 text-sm">Tags</th>
-              <th className="text-left py-3 px-4 font-medium text-gray-600 text-sm">Location</th>
               <th className="text-center py-3 px-4 font-medium text-gray-600 text-sm">
                 <button onClick={() => onSort("created_at")} className="flex items-center justify-center gap-1 hover:text-gray-900 w-full">
                   <span>Created</span>
@@ -442,31 +377,23 @@ function PromptTable({
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="py-6 px-6">
+                <td colSpan={7} className="py-6 px-6">
                   <div className="animate-pulse h-5 bg-gray-200 rounded w-1/3 mb-2" />
                   <div className="animate-pulse h-5 bg-gray-200 rounded w-1/2" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-gray-500">
-                  No prompts found.
-                </td>
+                <td colSpan={7} className="py-10 text-center text-gray-500">No prompts found.</td>
               </tr>
             ) : (
               rows.map((p) => (
-                <tr
-                  key={p.id}
-                  className="border-b border-gray-50 hover:bg-gray-25 cursor-pointer"
-                  onClick={() => onRowClick(p.id)}
-                >
+                <tr key={p.id} className="border-b border-gray-50 hover:bg-gray-25 cursor-pointer" onClick={() => onRowClick(p.id)}>
                   <td className="py-4 px-6">
                     <p className="text-sm text-gray-900 font-medium line-clamp-2">{p.prompt}</p>
                   </td>
                   <td className="py-4 px-4">
-                    <span className="text-sm text-gray-900">
-                      {p._avgPosition != null ? p._avgPosition.toFixed(1) : "—"}
-                    </span>
+                    <span className="text-sm text-gray-900">{p._avgPosition != null ? p._avgPosition.toFixed(1) : "—"}</span>
                   </td>
                   <td className="py-4 px-4">
                     <SentimentPill n={p._avgSentiment01} />
@@ -475,25 +402,13 @@ function PromptTable({
                     <VisibilityBar pct={p._visibilityPct} />
                   </td>
                   <td className="py-4 px-4">
-                    <div className="flex -space-x-2">
-                      <div className="h-6 w-6 rounded-full bg-gray-200 border border-white" />
-                      <div className="h-6 w-6 rounded-full bg-gray-300 border border-white" />
-                      <div className="h-6 w-6 rounded-full bg-gray-400 border border-white" />
-                    </div>
+                    {p._topBrands && p._topBrands.length > 0 ? <TopBrandsCell items={p._topBrands} /> : <span className="text-sm text-gray-400">—</span>}
                   </td>
                   <td className="py-4 px-4">
-                    {p.topic ? (
-                      <Badge variant="secondary" className="text-2xs">
-                        {p.topic}
-                      </Badge>
-                    ) : (
-                      <span className="text-sm text-gray-400">—</span>
-                    )}
+                    {p.topic ? <Badge variant="secondary" className="text-xs">{p.topic}</Badge> : <span className="text-sm text-gray-400">—</span>}
                   </td>
                   <td className="py-4 px-4 text-center">
-                    <span className="text-sm text-gray-500">
-                      {p.created_at ? new Date(p.created_at).toLocaleDateString() : "—"}
-                    </span>
+                    <span className="text-sm text-gray-500">{p.created_at ? new Date(p.created_at).toLocaleDateString() : "—"}</span>
                   </td>
                 </tr>
               ))
