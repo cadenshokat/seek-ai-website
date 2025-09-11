@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useBrands } from '@/hooks/useBrands';
 import { DailyVisibilityData } from '@/hooks/useDailyVisibility';
 
@@ -21,8 +21,10 @@ interface MentionsMetricsProps {
 
 export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
   const { getBrandOptions } = useBrands();
+  const [showAll, setShowAll] = useState(false);
 
-  const metrics = useMemo((): BrandMetric[] => {
+
+  const brandMetrics = useMemo((): BrandMetric[] => {
     const brandOptions = getBrandOptions;
     
     // Group by entity and calculate averages
@@ -50,7 +52,7 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
         sentiment: 70 + Math.random() * 20, // Mock sentiment data
         visibility: Math.round(visibility),
         color: brand?.color,
-        mentions: avgMentions 
+        mentions: Math.round(avgMentions)
       };
     });
 
@@ -62,8 +64,29 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
       metric.position = index + 1;
     });
 
-    return brandMetrics.slice(0, 5); // Top 5
+    return brandMetrics;
   }, [data, getBrandOptions]);
+
+  const metrics = useMemo(
+    () => (showAll ? brandMetrics : brandMetrics.slice(0, 5)),
+    [brandMetrics, showAll]
+  );
+
+  const SentimentPill = ({ n }: { n: number | null }) => {
+    if (n == null) return <span>—</span>;
+
+    const bgClass =
+      n >= 70 ? "bg-green-400"
+      : n >= 40 ? "bg-gray-400"
+      : "bg-rose-500";
+
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+        <span className={`inline-block w-1.5 h-1.5 rounded-full ${bgClass}`} />
+        {n}
+      </span>
+    );
+  };
 
   if (loading) {
     return (
@@ -126,9 +149,8 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
                 </td>
                 <td className="py-2 text-center">
                   <div className="flex items-center justify-center space-x-1">
-                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                     <span className="text-xs text-gray-900">
-                      {Math.round(metric.sentiment)}
+                      <SentimentPill n={Math.round(metric.sentiment)}/>
                     </span>
                   </div>
                 </td>
@@ -148,9 +170,14 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
         </table>
       </div>
       
-      <div className="mt-4 pt-4 border-t border-gray-100">
-        <button className="text-sm text-blue-600 hover:text-blue-700">
-          All Data
+      <div className="mt-4">
+        <button
+          className="text-sm text-blue-600 hover:text-blue-700"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+          aria-controls="industry-ranking-table"
+        >
+          {showAll ? 'Show Less' : 'All Data'}
         </button>
       </div>
     </div>

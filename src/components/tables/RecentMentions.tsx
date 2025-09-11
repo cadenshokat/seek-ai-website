@@ -2,6 +2,7 @@ import React from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RecentMentionEnriched } from "@/hooks/useRecentMentions";
+import { useOpenChatFromMention } from "@/hooks/useRunFromChat";
 import clsx from "clsx";
 
 type RecentMentionsProps = {
@@ -63,6 +64,8 @@ function toCsv(rows: RecentMentionEnriched[]) {
 }
 
 export function RecentMentions({ data, loading, className }: RecentMentionsProps) {
+  const { open } = useOpenChatFromMention();
+  
   const handleDownload = () => {
     const csv = toCsv(data);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -121,7 +124,11 @@ export function RecentMentions({ data, loading, className }: RecentMentionsProps
             <tbody>
               {data.map((m) => (
                 <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="py-2 px-4">
+                  <td
+                    className="py-2 px-4 cursor-pointer"
+                    onClick={() => open(m)}                
+                    title="Open chat"
+                  >
                     <div className="flex items-start gap-3 min-w-0 items-center">
                       <div className="flex-none pr-2">
                         {m.model?.logo ? (

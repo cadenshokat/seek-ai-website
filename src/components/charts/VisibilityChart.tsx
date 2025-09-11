@@ -15,7 +15,7 @@ interface VisibilityChartProps {
 }
 
 export function VisibilityChart({ data, loading, selectedBrand }: VisibilityChartProps) {
-  const { getBrandOptions } = useBrands(); // this is already an ARRAY in your context
+  const { getBrandOptions } = useBrands();
 
   const { chartData, seriesKeys, colorFor } = useMemo(() => {
     const brandOptions = getBrandOptions;
@@ -23,7 +23,6 @@ export function VisibilityChart({ data, loading, selectedBrand }: VisibilityChar
       brandOptions.map(b => [b.id, { name: b.name, color: b.color }])
     );
 
-    // sum mentions per day × entity (across platforms)
     const byDay: Record<string, Record<string, number>> = {};
     for (const row of data) {
       (byDay[row.day] ??= {});
@@ -39,7 +38,6 @@ export function VisibilityChart({ data, loading, selectedBrand }: VisibilityChar
     const rows: ChartRow[] = [];
     const allSeries = new Set<string>();
 
-    // Determine the single selected series name (if any)
     const selectedName = selectedBrand
       ? (idToMeta.get(selectedBrand)?.name ?? 'Selected')
       : null;
@@ -62,7 +60,6 @@ export function VisibilityChart({ data, loading, selectedBrand }: VisibilityChar
       rows.push(row as ChartRow);
     }
 
-    // color resolver (use brand color when single series is shown)
     const colorFor = (series: string, index: number) => {
       if (selectedBrand && series === (idToMeta.get(selectedBrand)?.name ?? 'Selected')) {
         return idToMeta.get(selectedBrand)?.color ?? `hsl(${index * 60}, 70%, 50%)`;
