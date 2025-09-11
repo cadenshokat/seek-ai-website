@@ -857,6 +857,7 @@ export type Database = {
           id: string
           sentence: string
           position: number
+          run_id: string
           date: string
           entity_id: string
           entity_type: string
