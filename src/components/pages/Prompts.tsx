@@ -248,15 +248,6 @@ export function Prompts() {
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
-        <TabsList className="grid w-fit grid-cols-3">
-          <TabsTrigger value="active">Active</TabsTrigger>
-          <TabsTrigger value="suggested">
-            Suggested
-            <Badge variant="secondary" className="ml-2">25</Badge>
-          </TabsTrigger>
-          <TabsTrigger value="inactive">Inactive</TabsTrigger>
-        </TabsList>
-
         <TabsContent value="active" className="mt-6">
           <PromptTable
             loading={loading}
@@ -287,11 +278,22 @@ export function Prompts() {
   );
 }
 
-function SentimentPill({ n }: { n: number | null | undefined }) {
-  if (n == null) return <span className="text-sm text-gray-400">—</span>;
-  const color = n >= 70 ? "bg-emerald-100 text-emerald-700" : n >= 40 ? "bg-gray-100 text-gray-700" : "bg-rose-100 text-rose-700";
-  return <span className={classNames("inline-flex items-center justify-center rounded-full px-2 py-0.5 text-xs font-semibold", color)}>{n}</span>;
-}
+const SentimentPill = ({ n }: { n: number | null }) => {
+  if (n == null) return <span>—</span>;
+
+  const bgClass =
+    n >= 70 ? "bg-green-400"
+    : n >= 40 ? "bg-gray-400"
+    : "bg-rose-500";
+
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+      <span className={`inline-block w-1.5 h-1.5 rounded-full ${bgClass}`} />
+      {n}
+    </span>
+  );
+};
+
 
 function VisibilityBar({ pct }: { pct: number | undefined }) {
   const v = Math.max(0, Math.min(100, pct ?? 0));

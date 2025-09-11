@@ -1,382 +1,321 @@
-import React, { useState, useEffect } from 'react';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ExternalLink, ChevronLeft, MoreVertical, Flag } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
-import { useBrands } from '@/hooks/useBrands';
-import { CompetitorChat } from '@/components/CompetitorChat';
+import React, { useEffect, useMemo, useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
+import { useBrands } from "@/hooks/useBrands";
+import { useTimeRange } from "@/hooks/useTimeRange";
+import { ExternalLink } from "lucide-react";
 
-interface Competitor {
+type Competitor = {
   id: string;
   name: string;
   color?: string;
   logo?: string;
   website?: string;
   brand_id: string;
-}
+};
 
-interface CompetitorMention {
+type Mention = {
   id: string;
-  sentence_mentioned: string;
-  sentiment: string;
-  date: string;
-  position: number;
-}
+  competitor_id: string;
+  sentence_mentioned: string | null;
+  sentiment: "positive" | "neutral" | "negative" | string;
+  position: number | null;
+  date: string; // ISO
+};
 
-interface CompetitorDetails extends Competitor {
-  mentions: CompetitorMention[];
-  totalMentions: number;
+type SummaryRow = {
+  competitor: Competitor;
+  brandName: string;
+  total: number;
   avgPosition: number;
-  sentimentBreakdown: {
-    positive: number;
-    neutral: number;
-    negative: number;
-  };
-}
+  pos: number;
+  neu: number;
+  neg: number;
+  lastDate: string | null;
+};
+
+const sentimentBadge = (s: string) => {
+  const v = (s || "").toLowerCase();
+  if (v === "positive") return "bg-green-100 text-green-800";
+  if (v === "negative") return "bg-red-100 text-red-800";
+  return "bg-gray-100 text-gray-800";
+};
+
+const fmtDate = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "—";
 
 export function Competitors() {
-  const [competitors, setCompetitors] = useState<Competitor[]>([]);
-  const [selectedCompetitor, setSelectedCompetitor] = useState<CompetitorDetails | null>(null);
-  const [loading, setLoading] = useState(true);
   const { brands } = useBrands();
+  const { selectedRange } = useTimeRange();
+
+  const [competitors, setCompetitors] = useState<Competitor[]>([]);
+  const [mentions, setMentions] = useState<Mention[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const getBrandName = (brandId: string) => brands.find((b) => b.id === brandId)?.name || "Unknown";
 
   useEffect(() => {
-    fetchCompetitors();
-  }, []);
-
-  const fetchCompetitors = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('competitors')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-      setCompetitors(data || []);
-    } catch (error) {
-      console.error('Error fetching competitors:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCompetitorDetails = async (competitorId: string) => {
-    try {
+    (async () => {
       setLoading(true);
-      
-      // Fetch competitor basic info
-      const { data: competitor, error: competitorError } = await supabase
-        .from('competitors')
-        .select('*')
-        .eq('id', competitorId)
-        .single();
+      try {
+        // 1) Get competitors
+        const { data: comps, error: cErr } = await supabase
+          .from("competitors")
+          .select("id,name,color,logo,website,brand_id")
+          .order("name", { ascending: true });
 
-      if (competitorError) throw competitorError;
+        if (cErr) throw cErr;
+        setCompetitors(comps || []);
 
-      // Fetch competitor mentions
-      const { data: mentions, error: mentionsError } = await supabase
-        .from('competitor_mentions')
-        .select('*')
-        .eq('competitor_id', competitorId)
-        .order('date', { ascending: false })
-        .limit(50);
+        // 2) Get all mentions for these competitors in the selected range, paged (to go past 1,000)
+        const ids = (comps || []).map((c) => c.id);
+        if (ids.length === 0) {
+          setMentions([]);
+          return;
+        }
 
-      if (mentionsError) throw mentionsError;
+        const startISO = new Date(
+          selectedRange.start.getFullYear(),
+          selectedRange.start.getMonth(),
+          selectedRange.start.getDate(),
+          0, 0, 0, 0
+        ).toISOString();
 
-      // Calculate metrics
-      const totalMentions = mentions?.length || 0;
-      const avgPosition = mentions?.length > 0 
-        ? mentions.reduce((sum, m) => sum + m.position, 0) / mentions.length 
-        : 0;
+        const endISO = new Date(
+          selectedRange.end.getFullYear(),
+          selectedRange.end.getMonth(),
+          selectedRange.end.getDate(),
+          23, 59, 59, 999
+        ).toISOString();
 
-      const sentimentBreakdown = mentions?.reduce((acc, mention) => {
-        acc[mention.sentiment as keyof typeof acc] = (acc[mention.sentiment as keyof typeof acc] || 0) + 1;
-        return acc;
-      }, { positive: 0, neutral: 0, negative: 0 }) || { positive: 0, neutral: 0, negative: 0 };
+        const pageSize = 1000;
+        let page = 0;
+        const all: Mention[] = [];
 
-      const competitorDetails: CompetitorDetails = {
-        ...competitor,
-        mentions: mentions || [],
-        totalMentions,
-        avgPosition: Math.round(avgPosition * 10) / 10,
-        sentimentBreakdown
+        while (true) {
+          const from = page * pageSize;
+          const to = from + pageSize - 1;
+
+          const { data: batch, error: mErr } = await supabase
+            .from("competitor_mentions")
+            .select("id,competitor_id,sentence_mentioned,sentiment,position,date")
+            .in("competitor_id", ids)
+            .gte("date", startISO)
+            .lte("date", endISO)
+            .order("date", { ascending: false })
+            .range(from, to);
+
+          if (mErr) throw mErr;
+
+          all.push(...(batch || []));
+          if (!batch || batch.length < pageSize) break; // done
+          page += 1;
+        }
+
+        setMentions(all);
+      } catch (e) {
+        console.error("Failed to load competitors or mentions", e);
+        setCompetitors([]);
+        setMentions([]);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [selectedRange]);
+
+  const summaries: SummaryRow[] = useMemo(() => {
+    if (!competitors.length) return [];
+
+    // Group mentions by competitor
+    const byComp = new Map<string, Mention[]>();
+    for (const m of mentions) {
+      if (!byComp.has(m.competitor_id)) byComp.set(m.competitor_id, []);
+      byComp.get(m.competitor_id)!.push(m);
+    }
+
+    return competitors.map((c) => {
+      const list = byComp.get(c.id) || [];
+      const total = list.length;
+
+      const pos = list.filter((m) => (m.sentiment || "").toLowerCase() === "positive").length;
+      const neu = list.filter((m) => (m.sentiment || "").toLowerCase() === "neutral").length;
+      const neg = list.filter((m) => (m.sentiment || "").toLowerCase() === "negative").length;
+
+      const avgPosition =
+        total > 0
+          ? Math.round(
+              (list.reduce((s, m) => s + (typeof m.position === "number" ? m.position : 0), 0) / total) * 10
+            ) / 10
+          : 0;
+
+      const lastDate = list.length ? list[0].date : null;
+
+      return {
+        competitor: c,
+        brandName: getBrandName(c.brand_id),
+        total,
+        avgPosition,
+        pos,
+        neu,
+        neg,
+        lastDate,
       };
-
-      setSelectedCompetitor(competitorDetails);
-    } catch (error) {
-      console.error('Error fetching competitor details:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const getBrandName = (brandId: string) => {
-    const brand = brands.find(b => b.id === brandId);
-    return brand?.name || 'Unknown Brand';
-  };
-
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case 'positive': return 'bg-green-100 text-green-800';
-      case 'negative': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
-    }
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
     });
-  };
+  }, [competitors, mentions, brands]);
 
-  if (selectedCompetitor) {
+  const selectedMentions = useMemo(() => {
+    if (!selectedId) return [];
+    return mentions.filter((m) => m.competitor_id === selectedId).slice(0, 50);
+  }, [mentions, selectedId]);
+
+  if (loading) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => setSelectedCompetitor(null)}
-              className="flex items-center space-x-2"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              <span>Back to Competitors</span>
-            </Button>
-            <div className="h-6 w-px bg-gray-300" />
-            <div className="flex items-center space-x-3">
-              {selectedCompetitor.logo && (
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={selectedCompetitor.logo} alt={selectedCompetitor.name} />
-                  <AvatarFallback>{selectedCompetitor.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-              )}
-              <span className="text-lg font-medium">{selectedCompetitor.name}</span>
-            </div>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button variant="outline" size="sm">
-              <Flag className="h-4 w-4 mr-1" />
-              Report Issue
-            </Button>
-            <Button variant="ghost" size="sm">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          <div className="lg:col-span-3">
-            <Card className="p-6">
-              <div className="flex items-start space-x-4 mb-6">
-                {selectedCompetitor.logo && (
-                  <Avatar className="h-16 w-16">
-                    <AvatarImage src={selectedCompetitor.logo} alt={selectedCompetitor.name} />
-                    <AvatarFallback className="text-lg">{selectedCompetitor.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                )}
-                <div className="flex-1">
-                  <h1 className="text-2xl font-bold mb-2">{selectedCompetitor.name}</h1>
-                  <div className="flex items-center space-x-4 text-sm text-gray-600 mb-4">
-                    <Badge variant="secondary">Competitor</Badge>
-                    <span>Brand: {getBrandName(selectedCompetitor.brand_id)}</span>
-                  </div>
-                  {selectedCompetitor.website && (
-                    <Button variant="outline" size="sm" asChild>
-                      <a href={selectedCompetitor.website} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-4 w-4 mr-1" />
-                        Visit Website
-                      </a>
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900">{selectedCompetitor.totalMentions}</div>
-                  <div className="text-sm text-gray-600">Total Mentions</div>
-                </div>
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900">{selectedCompetitor.avgPosition}</div>
-                  <div className="text-sm text-gray-600">Avg Position</div>
-                </div>
-                <div className="text-center p-4 bg-gray-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
-                    {Math.round((selectedCompetitor.sentimentBreakdown.positive / selectedCompetitor.totalMentions) * 100) || 0}%
-                  </div>
-                  <div className="text-sm text-gray-600">Positive Sentiment</div>
-                </div>
-              </div>
-
-              <Tabs defaultValue="chat">
-                <TabsList>
-                  <TabsTrigger value="chat">AI Analysis</TabsTrigger>
-                  <TabsTrigger value="mentions">Recent Mentions</TabsTrigger>
-                  <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="chat" className="space-y-4">
-                  <CompetitorChat competitorId={selectedCompetitor.id} competitorName={selectedCompetitor.name} />
-                </TabsContent>
-
-                <TabsContent value="mentions" className="space-y-4">
-                  {selectedCompetitor.mentions.length > 0 ? (
-                    selectedCompetitor.mentions.map((mention) => (
-                      <div key={mention.id} className="border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center space-x-2">
-                            <Badge className={getSentimentColor(mention.sentiment)}>
-                              {mention.sentiment}
-                            </Badge>
-                            <span className="text-sm text-gray-600">Position {mention.position}</span>
-                          </div>
-                          <span className="text-sm text-gray-500">{formatDate(mention.date)}</span>
-                        </div>
-                        <p className="text-gray-800">{mention.sentence_mentioned}</p>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      No mentions found for this competitor.
-                    </div>
-                  )}
-                </TabsContent>
-
-                <TabsContent value="analytics">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-green-50 p-4 rounded-lg">
-                      <div className="text-lg font-semibold text-green-800">
-                        {selectedCompetitor.sentimentBreakdown.positive}
-                      </div>
-                      <div className="text-sm text-green-600">Positive Mentions</div>
-                    </div>
-                    <div className="bg-gray-50 p-4 rounded-lg">
-                      <div className="text-lg font-semibold text-gray-800">
-                        {selectedCompetitor.sentimentBreakdown.neutral}
-                      </div>
-                      <div className="text-sm text-gray-600">Neutral Mentions</div>
-                    </div>
-                    <div className="bg-red-50 p-4 rounded-lg">
-                      <div className="text-lg font-semibold text-red-800">
-                        {selectedCompetitor.sentimentBreakdown.negative}
-                      </div>
-                      <div className="text-sm text-red-600">Negative Mentions</div>
-                    </div>
-                  </div>
-                </TabsContent>
-              </Tabs>
-            </Card>
-          </div>
-
-          <div className="space-y-4">
-            <Card className="p-4">
-              <h3 className="font-medium mb-3">Related Brands</h3>
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-50">
-                  <div className="w-6 h-6 bg-blue-500 rounded" />
-                  <span className="text-sm">{getBrandName(selectedCompetitor.brand_id)}</span>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-4">
-              <h3 className="font-medium mb-3">Sources</h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-50">
-                  <span>Direct mentions</span>
-                  <Badge variant="secondary">{selectedCompetitor.totalMentions}</Badge>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
+      <div className="space-y-4">
+        <div className="h-6 w-40 bg-gray-100 rounded animate-pulse" />
+        <div className="h-10 w-full bg-gray-100 rounded animate-pulse" />
+        <div className="h-64 w-full bg-gray-100 rounded animate-pulse" />
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-8">
+      <header className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-gray-900">Competitors</h1>
-          <p className="text-gray-600">Monitor and analyze your competitors</p>
+          <p className="text-gray-600 text-sm">
+            Aggregated mentions for {fmtDate(selectedRange.start.toISOString())} – {fmtDate(selectedRange.end.toISOString())}
+          </p>
         </div>
-        <Button>Add Competitor</Button>
+        <Button variant="secondary" onClick={() => setSelectedId(null)}>
+          Clear Selection
+        </Button>
+      </header>
+
+      {/* SUMMARY TABLE */}
+      <div className="overflow-x-auto rounded-lg border border-gray-200">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50 text-xs uppercase text-gray-600">
+            <tr>
+              <th className="px-4 py-3 text-left">Competitor</th>
+              <th className="px-4 py-3 text-left">Brand</th>
+              <th className="px-4 py-3 text-right">Mentions</th>
+              <th className="px-4 py-3 text-right">Avg&nbsp;Position</th>
+              <th className="px-4 py-3 text-right">Positive</th>
+              <th className="px-4 py-3 text-right">Neutral</th>
+              <th className="px-4 py-3 text-right">Negative</th>
+              <th className="px-4 py-3 text-left">Last Mention</th>
+              <th className="px-4 py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {summaries
+              .sort((a, b) => b.total - a.total)
+              .map((row) => {
+                const c = row.competitor;
+                return (
+                  <tr
+                    key={c.id}
+                    className={`hover:bg-gray-50 cursor-pointer ${selectedId === c.id ? "bg-gray-50" : ""}`}
+                    onClick={() => setSelectedId(c.id)}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {c.logo ? (
+                          <img src={c.logo} alt={c.name} className="h-6 w-6 rounded" />
+                        ) : (
+                          <div className="h-6 w-6 rounded bg-gray-200" />
+                        )}
+                        <span className="font-medium text-gray-900">{c.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{row.brandName}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.total}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.avgPosition || "—"}</td>
+                    <td className="px-4 py-3 text-right">
+                      <Badge className="bg-green-50 text-green-700">{row.pos}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Badge className="bg-gray-50 text-gray-700">{row.neu}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Badge className="bg-red-50 text-red-700">{row.neg}</Badge>
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">{fmtDate(row.lastDate)}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        {c.website && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(c.website!, "_blank");
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+          </tbody>
+        </table>
       </div>
 
-      {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[...Array(6)].map((_, i) => (
-            <div key={i} className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse">
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="w-10 h-10 bg-gray-200 rounded-full" />
-                <div className="flex-1">
-                  <div className="h-4 bg-gray-200 rounded mb-2" />
-                  <div className="h-3 bg-gray-200 rounded w-1/2" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="h-3 bg-gray-200 rounded" />
-                <div className="h-3 bg-gray-200 rounded w-3/4" />
-              </div>
+      {/* DRILL-DOWN TABLE */}
+      {selectedId && (
+        <div className="space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-lg font-semibold">
+              Recent mentions —{" "}
+              {summaries.find((s) => s.competitor.id === selectedId)?.competitor.name || "Selected"}
+            </h2>
+            <div className="text-sm text-gray-500">
+              Showing up to 50 most recent in range
             </div>
-          ))}
-        </div>
-      ) : competitors.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {competitors.map((competitor) => (
-            <Card 
-              key={competitor.id} 
-              className="p-6 cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => fetchCompetitorDetails(competitor.id)}
-            >
-              <div className="flex items-center space-x-3 mb-4">
-                {competitor.logo && (
-                  <Avatar>
-                    <AvatarImage src={competitor.logo} alt={competitor.name} />
-                    <AvatarFallback>{competitor.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
+          </div>
+
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50 text-xs uppercase text-gray-600">
+                <tr>
+                  <th className="px-4 py-3 text-left">Date</th>
+                  <th className="px-4 py-3 text-left">Sentiment</th>
+                  <th className="px-4 py-3 text-right">Position</th>
+                  <th className="px-4 py-3 text-left">Sentence</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {selectedMentions.length ? (
+                  selectedMentions.map((m) => (
+                    <tr key={m.id}>
+                      <td className="px-4 py-3">{fmtDate(m.date)}</td>
+                      <td className="px-4 py-3">
+                        <Badge className={sentimentBadge(m.sentiment)}>{m.sentiment}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right tabular-nums">
+                        {typeof m.position === "number" ? m.position : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-gray-800">
+                        <span className="line-clamp-2">{m.sentence_mentioned || "—"}</span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="px-4 py-6 text-center text-gray-500" colSpan={4}>
+                      No mentions in the selected range.
+                    </td>
+                  </tr>
                 )}
-                <div className="flex-1">
-                  <h3 className="font-medium text-gray-900">{competitor.name}</h3>
-                  <p className="text-sm text-gray-600">{getBrandName(competitor.brand_id)}</p>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Status</span>
-                  <Badge variant="secondary">Active</Badge>
-                </div>
-                {competitor.website && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Website</span>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      asChild
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <a href={competitor.website} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="text-center py-12">
-          <div className="text-gray-500 mb-4">No competitors found</div>
-          <Button>Add Your First Competitor</Button>
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

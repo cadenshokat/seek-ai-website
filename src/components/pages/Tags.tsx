@@ -209,7 +209,7 @@ export function Tags() {
         <div className="h-32 bg-gray-200 rounded animate-pulse" />
         <div className="space-y-3">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-12 bg-gray-200 rounded animate-pulse" />
+            <div key={i} className="h-6 bg-gray-200 rounded animate-pulse" />
           ))}
         </div>
       </div>
@@ -219,8 +219,8 @@ export function Tags() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-gray-900">Tags</h1>
-        <p className="text-gray-600">Organize and categorize your content with tags</p>
+        <h1 className="text-lg font-semibold text-gray-900">Tags</h1>
+        <p className="text-gray-600 text-sm">Organize and categorize your content with tags</p>
       </div>
 
       {/* Create Tag Form */}

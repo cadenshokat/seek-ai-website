@@ -57,19 +57,6 @@ const extractPromptText = (p: PromptJoin): string => {
   return p.prompt ?? "(untitled prompt)";
 };
 
-const sentimentBadgeClass = (sentiment: string, score: number | null) => {
-  const label = (sentiment || "").toLowerCase();
-  if (label.includes("pos")) return "bg-green-50 text-green-700 ring-1 ring-green-200";
-  if (label.includes("neg")) return "bg-red-50 text-red-700 ring-1 ring-red-200";
-  if (label.includes("neu")) return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-
-  if (typeof score === "number") {
-    if (score > 0.15) return "bg-green-50 text-green-700 ring-1 ring-green-200";
-    if (score < -0.15) return "bg-red-50 text-red-700 ring-1 ring-red-200";
-  }
-  return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-};
-
 const extractPlatformInfo = (pl: PlatformJoin): { model_name: string; model_logo?: string | null } => {
   const pick = (obj: any) => ({ model_name: obj?.name ?? "", model_logo: obj?.logo ?? null });
   if (!pl) return { model_name: "", model_logo: null };
@@ -181,8 +168,18 @@ export default function ChatItem() {
 
   const SentimentPill = ({ n }: { n: number | null }) => {
     if (n == null) return <span>—</span>;
-    const color = n >= 60 ? "bg-emerald-100 text-emerald-700" : n >= 40 ? "bg-gray-100 text-gray-700" : "bg-rose-100 text-rose-700";
-    return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}><span className="w-1.5 h-1.5 rounded-full bg-current" />{n.toFixed(0)}</span>;
+
+    const bgClass =
+      n >= 70 ? "bg-green-400"
+      : n >= 40 ? "bg-gray-400"
+      : "bg-rose-500";
+
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+        <span className={`inline-block w-1.5 h-1.5 rounded-full ${bgClass}`} />
+        {n}
+      </span>
+    );
   };
 
   const runAt = new Date(run.run_at).toLocaleString();
@@ -198,7 +195,7 @@ export default function ChatItem() {
           </div>
 
           <div className="ml-auto">
-            <TabsList className="inline-flex w-auto text-sm">
+            <TabsList className="inline-flex w-auto text-sm h-10">
               <TabsTrigger value="response" className="text-sm">Response</TabsTrigger>
               <TabsTrigger value="stats" className="text-sm">Stats</TabsTrigger>
             </TabsList>
@@ -250,7 +247,7 @@ export default function ChatItem() {
                             </td>
                             <td className="px-3 py-2">
                               <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs`}>
-                                <SentimentPill n={score} />
+                                <SentimentPill n={Math.round(score)} />
                               </span>
                             </td>
                             <td className="px-3 py-2">
