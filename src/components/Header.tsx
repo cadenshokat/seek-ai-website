@@ -2,14 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useParams, Link } from 'react-router-dom';
 import { Clock, FileText } from 'lucide-react';
-import {
-  Breadcrumb,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
+import LogoutButton from '@/components/LogoutButton'
 import { DynamicBreadcrumb } from '@/components/DynamicBreadcrumb'
 
 const routeNames: Record<string, string> = {
@@ -84,8 +77,7 @@ export function Header() {
             <span>{countdown}</span>
           </div>
           <div className="flex items-center space-x-2 text-sm text-gray-500">
-            <FileText className="w-4 h-4" />
-            <span>Docs</span>
+            <LogoutButton/>
           </div>
         </div>
       </div>

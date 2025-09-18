@@ -1,4 +1,3 @@
-// src/pages/chatitem.tsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Markdown, normalizeMarkdown } from "@/lib/markdown";
@@ -7,10 +6,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft, ExternalLink, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
+import { useBrands } from "@/hooks/useBrands";
 
 type PromptJoin = { prompt: string } | { prompt: string }[] | null | undefined;
 type PlatformJoin =
@@ -57,12 +55,6 @@ const extractPromptText = (p: PromptJoin): string => {
   return p.prompt ?? "(untitled prompt)";
 };
 
-const extractPlatformInfo = (pl: PlatformJoin): { model_name: string; model_logo?: string | null } => {
-  const pick = (obj: any) => ({ model_name: obj?.name ?? "", model_logo: obj?.logo ?? null });
-  if (!pl) return { model_name: "", model_logo: null };
-  return Array.isArray(pl) ? pick(pl[0] || {}) : pick(pl);
-};
-
 export default function ChatItem() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -74,6 +66,9 @@ export default function ChatItem() {
   const [loading, setLoading] = useState<boolean>(false);
   const [initialized, setInitialized] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>("response");
+  const { getBrandOptions } = useBrands();
+  
+  const brandOptions = getBrandOptions;
 
   useEffect(() => {
     if (!id) return;
@@ -140,7 +135,6 @@ export default function ChatItem() {
   }, [id, toast]);
 
   const promptText = useMemo(() => extractPromptText(run?.prompts), [run]);
-  const { model_name, model_logo } = useMemo(() => extractPlatformInfo(run?.platforms), [run]);
 
   if (!initialized || loading) {
     return (
@@ -170,9 +164,11 @@ export default function ChatItem() {
     if (n == null) return <span>—</span>;
 
     const bgClass =
-      n >= 70 ? "bg-green-400"
-      : n >= 40 ? "bg-gray-400"
-      : "bg-rose-500";
+      n >= 90 ? "bg-[#86efac]"
+      : n >= 70 ? "bg-[#bef264]"
+      : n >= 50 ? "bg-[#fde047]"
+      : n >= 30 ? "bg-[#fdba74]"
+      : "bg-[#fca5a5]";
 
     return (
       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
@@ -182,7 +178,10 @@ export default function ChatItem() {
     );
   };
 
-  const runAt = new Date(run.run_at).toLocaleString();
+  const toPillPercent = (s: number) => {
+      const pct = ((s + 1) / 2) * 100;
+      return Math.max(0, Math.min(100, pct));
+    };
 
   return (
     <div className="">
@@ -232,14 +231,15 @@ export default function ChatItem() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {mentions.map((m) => {
-                        const score = m.sentiment_score * 100;
-                        const scoreText =
-                          typeof score === "number" ? score.toFixed(0) : 0;
+                      {mentions.map((m) => {    
+                        const brand = brandOptions.find(b => b.id === m.entity_id);                    
                         return (
                           <tr key={m.id} className="hover:bg-gray-50 text-xs">
                             <td className="px-3 py-2 text-gray-500">{m.position}</td>
-                            <td className="px-3 py-2">{m.entity_id}</td>
+                            <td className="px-3 py-2 flex items-center gap-2">
+                              <img src={brand?.logo} alt="None" className="h-5 w-5 rounded-full"/>
+                              {brand?.name || "Unknown"}
+                            </td>
                             <td className="px-3 py-2">
                               <span className="inline-flex items-center rounded px-2 py-0.5 text-xs">
                                 {m.entity_type}
@@ -247,11 +247,11 @@ export default function ChatItem() {
                             </td>
                             <td className="px-3 py-2">
                               <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs`}>
-                                <SentimentPill n={Math.round(score)} />
+                                <SentimentPill n={Math.round(toPillPercent(m.sentiment_score))} />
                               </span>
                             </td>
-                            <td className="px-3 py-2">
-                              <div className="max-w-[60ch] break-words text-gray-800">
+                            <td className="px-6 py-2">
+                              <div className="max-w-[90ch] break-words text-gray-800">
                                 {m.sentence || "—"}
                               </div>
                             </td>

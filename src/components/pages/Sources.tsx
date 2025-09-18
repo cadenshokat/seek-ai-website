@@ -254,7 +254,7 @@ export default function Sources({ brandId, limitTop = 5 }: Props) {
           </div>
 
           <ChartContainer config={{ visibility: { label: "Usage %" } }} className="w-full mt-9" style={{ height: 350 }}>
-            <ResponsiveContainer width="100%" aspect={3.5}>
+            <ResponsiveContainer width="100%" >
               <LineChart data={aggregates.chart} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                 <XAxis

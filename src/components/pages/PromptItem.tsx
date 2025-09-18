@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Download, Flag, ExternalLink, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
@@ -348,20 +346,22 @@ export default function PromptItem() {
     );
 
   const SentimentPill = ({ n }: { n: number | null }) => {
-  if (n == null) return <span>—</span>;
+    if (n == null) return <span>—</span>;
 
-  const bgClass =
-    n >= 70 ? "bg-green-400"
-    : n >= 40 ? "bg-gray-400"
-    : "bg-rose-500";
+    const bgClass =
+      n >= 90 ? "bg-[#86efac]"
+      : n >= 70 ? "bg-[#bef264]"
+      : n >= 50 ? "bg-[#fde047]"
+      : n >= 30 ? "bg-[#fdba74]"
+      : "bg-[#fca5a5]";
 
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
-      <span className={`inline-block w-1.5 h-1.5 rounded-full ${bgClass}`} />
-      {n}
-    </span>
-  );
-};
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+        <span className={`inline-block w-1.5 h-1.5 rounded-full ${bgClass}`} />
+        {n}
+      </span>
+    );
+  };
 
   const handleDownloadJSON = (name: string, data: any) => {
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });

@@ -27,19 +27,31 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
   const brandMetrics = useMemo((): BrandMetric[] => {
     const brandOptions = getBrandOptions;
     
-    // Group by entity and calculate averages
-    const entityMetrics: Record<string, { mentions: number[], totalRuns: number[] }> = {};
+    const entityMetrics: Record<string, { mentions: number[], totalRuns: number[], sentiments: number[] }> = {};
     
     data.forEach((item) => {
       if (!entityMetrics[item.entity_id]) {
-        entityMetrics[item.entity_id] = { mentions: [], totalRuns: [] };
+        entityMetrics[item.entity_id] = { mentions: [], totalRuns: [], sentiments: [] };
       }
       entityMetrics[item.entity_id].mentions.push(item.mentions);
       entityMetrics[item.entity_id].totalRuns.push(item.total_runs);
+
+      if (typeof item.avg_sentiment_score === 'number') {
+        entityMetrics[item.entity_id].sentiments.push(item.avg_sentiment_score);
+      }
     });
+
+    const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+    const toPillPercent = (s: number) => {
+      const pct = ((s + 1) / 2) * 100;
+      return Math.max(0, Math.min(100, pct));
+    };
 
     const brandMetrics: BrandMetric[] = Object.entries(entityMetrics).map(([entityId, data], index) => {
       const brand = brandOptions.find(b => b.id === entityId);
+      const sentimentRaw = data.sentiments.length ? avg(data.sentiments) : null;
+      const sentiment = typeof sentimentRaw === 'number' ? toPillPercent(sentimentRaw): null;
       const avgMentions = data.mentions.reduce((a, b) => a + b, 0) / data.mentions.length;
       const avgTotalRuns = data.totalRuns.reduce((a, b) => a + b, 0) / data.totalRuns.length;
       const visibility = avgTotalRuns ? (avgMentions / avgTotalRuns) * 100 : 0;
@@ -49,17 +61,15 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
         name: brand?.name || 'Unknown',
         logo: brand?.logo || 'None',
         position: index + 1,
-        sentiment: 70 + Math.random() * 20, // Mock sentiment data
+        sentiment: sentiment, 
         visibility: Math.round(visibility),
         color: brand?.color,
         mentions: Math.round(avgMentions)
       };
     });
 
-    // Sort by visibility descending
     brandMetrics.sort((a, b) => b.visibility - a.visibility);
     
-    // Update positions
     brandMetrics.forEach((metric, index) => {
       metric.position = index + 1;
     });
@@ -76,9 +86,11 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
     if (n == null) return <span>—</span>;
 
     const bgClass =
-      n >= 70 ? "bg-green-400"
-      : n >= 40 ? "bg-gray-400"
-      : "bg-rose-500";
+      n >= 90 ? "bg-[#86efac]"
+      : n >= 70 ? "bg-[#bef264]"
+      : n >= 50 ? "bg-[#fde047]"
+      : n >= 30 ? "bg-[#fdba74]"
+      : "bg-[#fca5a5]";
 
     return (
       <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">

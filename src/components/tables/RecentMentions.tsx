@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RecentMentionEnriched } from "@/hooks/useRecentMentions";
@@ -76,6 +76,10 @@ export function RecentMentions({ data, loading, className }: RecentMentionsProps
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const mentionsData = useMemo((): RecentMentionEnriched[] => {
+    return data
+  }, [data])
 
   return (
     <div className={clsx("bg-white rounded-lg ml-1", className)}>
