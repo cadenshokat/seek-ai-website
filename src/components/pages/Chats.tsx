@@ -184,7 +184,7 @@ export function Chats() {
               placeholder="Search by prompt, response, or model..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 w-72"
+              className="pl-10 w-86"
             />
           </div>
 

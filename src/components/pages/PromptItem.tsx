@@ -2,8 +2,6 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Download, Flag, ExternalLink, ArrowUpRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +9,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useBrands } from "@/hooks/useBrands";
 import { useModels } from "@/hooks/useModels";
 import { useTimeRange } from "@/hooks/useTimeRange";
+import { Separator } from "@/components/ui/separator";
+import { useOpenChatFromTrip } from "@/hooks/useRunFromChat";
 
 type PMRow = {
   day: string;
@@ -90,6 +90,7 @@ export default function PromptItem() {
   const { promptId } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { openTrip } = useOpenChatFromTrip();
 
   const { selectedBrand, getBrandOptions } = useBrands();
   const { selectedModel } = useModels();
@@ -98,9 +99,10 @@ export default function PromptItem() {
   const { data: prompt, loading: promptLoading } = usePrompt(promptId);
 
   const [pmRows, setPmRows] = useState<PMRow[]>([]);
-  const [runs, setRuns] = useState<{ run_id: string; created: string; snippet: string; mentions: number }[]>([]);
+  const [runs, setRuns] = useState<{ run_id: string; model_id: string; created: string; snippet: string; mentions: number }[]>([]);
   const [sources, setSources] = useState<{ domain: string; count: number }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
 
   const optionById = useMemo(() => {
     const map = new Map<string, { name: string; type: "brand" | "competitor"; color?: string | null }>();
@@ -140,19 +142,30 @@ export default function PromptItem() {
         const { data: mentionRows, error: mErr } = await mQ;
         if (mErr) throw mErr;
 
-        const grouped: Record<string, { created: string; snippet: string; mentions: number }> = {};
-        (mentionRows || []).forEach((r: any) => {
-          const id = r.run_id as string;
-          if (!grouped[id]) grouped[id] = { created: r.date, snippet: r.sentence, mentions: 0 };
-          grouped[id].mentions += 1;
-          if (new Date(r.date) < new Date(grouped[id].created)) grouped[id].created = r.date;
-        });
-        const runList = Object.entries(grouped)
-          .sort((a, b) => +new Date(b[1].created) - +new Date(a[1].created))
-          .slice(0, 20)
-          .map(([run_id, v]) => ({ run_id, ...v }));
-        setRuns(runList);
+        const grouped: Record<string, { run_id: string; model_id: string | null; created: string; snippet: string; mentions: number }> = {};
 
+        (mentionRows || []).forEach((r: any) => {
+          const key = `${r.run_id}::${r.model_id ?? "null"}`;
+          const existing = grouped[key];
+          if (!existing) {
+            grouped[key] = {
+              run_id: r.run_id,
+              model_id: r.model_id ?? null,
+              created: r.date,
+              snippet: r.sentence,
+              mentions: 1,
+            };
+          } else {
+            existing.mentions += 1;
+            if (new Date(r.date) < new Date(existing.created)) existing.created = r.date;
+            if (!existing.snippet && r.sentence) existing.snippet = r.sentence;
+          }
+        });
+
+        const runList = Object.values(grouped)
+          .sort((a, b) => +new Date(b.created) - +new Date(a.created))
+          .slice(0, 20);
+        setRuns(runList);
         const runIds = new Set<string>(runList.map((r) => r.run_id));
 
         let sQ = supabase
@@ -239,7 +252,6 @@ export default function PromptItem() {
 
 
   const rechartsData = useMemo(() => {
-  // collect all days (YYYY-MM-DD) to fill zeros for missing days
   const days = Array.from(
     new Set(dailyData.map(r => r.day.slice(0,10)))
   ).sort((a, b) => +new Date(a) - +new Date(b));
@@ -248,16 +260,14 @@ export default function PromptItem() {
     ? (brandById.get(selectedBrand)?.name ?? 'Selected')
     : null;
 
-  // build: per day -> entity_id -> mentions AND total
   const perDay: Record<string, { total: number; per: Record<string, number> }> = {};
   dailyData.forEach(row => {
     const day = row.day.slice(0,10);
     perDay[day] ??= { total: 0, per: {} };
     perDay[day].per[row.entity_id] = (perDay[day].per[row.entity_id] ?? 0) + row.mentions;
-    perDay[day].total = row.total_runs; // already the grand total for the day
+    perDay[day].total = row.total_runs; 
   });
 
-  // now build Recharts rows
   const rows = days.map(day => {
     const label = fmtLocalDay(day);
     const bucket = perDay[day] ?? { total: 0, per: {} };
@@ -268,7 +278,6 @@ export default function PromptItem() {
         const mentions = bucket.per[selectedBrand] ?? 0;
         row[selectedLabel] = total ? (mentions / total) * 100 : 0;
       } else {
-        // all brands
         Object.entries(bucket.per).forEach(([id, mentions]) => {
           const name = brandById.get(id)?.name ?? 'Unknown';
           row[name] = total ? (mentions / total) * 100 : 0;
@@ -289,7 +298,7 @@ export default function PromptItem() {
     return Object.keys(first).filter(k => k !== 'date');
   }, [rechartsData, selectedBrand, brandById]);
 
-  const ranking = useMemo<RankRow[]>(() => {
+  const brandRanking = useMemo<RankRow[]>(() => {
     const agg: Record<string, {
       name: string;
       logo: string | null;
@@ -328,14 +337,30 @@ export default function PromptItem() {
       return { entity_id, brand: v.name, logo: v.logo, position, sentiment01: sent01, visibility };
     });
 
-    return rows.sort((a, b) => b.visibility - a.visibility).slice(0, 5);
+    return rows.sort((a, b) => b.visibility - a.visibility);
   }, [pmRows, brandById]);
 
+  const ranking = useMemo(
+      () => (showAll ? brandRanking : brandRanking.slice(0, 5)),
+      [brandRanking, showAll]
+    );
 
   const SentimentPill = ({ n }: { n: number | null }) => {
     if (n == null) return <span>—</span>;
-    const color = n >= 70 ? "bg-emerald-100 text-emerald-700" : n >= 40 ? "bg-gray-100 text-gray-700" : "bg-rose-100 text-rose-700";
-    return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${color}`}><span className="w-1.5 h-1.5 rounded-full bg-current" />{n}</span>;
+
+    const bgClass =
+      n >= 90 ? "bg-[#86efac]"
+      : n >= 70 ? "bg-[#bef264]"
+      : n >= 50 ? "bg-[#fde047]"
+      : n >= 30 ? "bg-[#fdba74]"
+      : "bg-[#fca5a5]";
+
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+        <span className={`inline-block w-1.5 h-1.5 rounded-full ${bgClass}`} />
+        {n}
+      </span>
+    );
   };
 
   const handleDownloadJSON = (name: string, data: any) => {
@@ -379,18 +404,12 @@ export default function PromptItem() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-medium text-gray-900 mb-2">{prompt.prompt}</h1>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Flag className="h-4 w-4 text-blue-500" />
-              US
-            </div>
-            <Badge variant={prompt.is_active ? "default" : "secondary"}>{prompt.is_active ? "Active" : "Inactive"}</Badge>
-          </div>
+          
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6">
+        <div className="p-2">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-medium text-gray-900 ml-1">Visibility</h3>
@@ -398,7 +417,7 @@ export default function PromptItem() {
             </div>
             <Button variant="outline" size="sm" onClick={() => handleDownloadJSON("visibility-data", dailyData)}>
               <Download className="w-4 h-4" />
-              <span className="ml-2">Download</span>
+              <span className="text-xs">Download</span>
             </Button>
           </div>
 
@@ -420,9 +439,11 @@ export default function PromptItem() {
               </ResponsiveContainer>
             </ChartContainer>
           </div>
-        </Card>
+        </div>
 
-        <Card className="p-6">
+        <Separator orientation="vertical" />
+
+        <div className="p-2">
           <div className="mb-4">
             <h3 className="text-sm font-medium text-gray-900 ml-1">Industry Ranking</h3>
             <p className="text-sm text-gray-500 ml-1">Brands with highest visibility</p>
@@ -452,16 +473,23 @@ export default function PromptItem() {
               </div>
             ))}
             <div className="pt-2 border-t">
-              <button className="text-sm text-blue-600 hover:text-blue-800 inline-flex items-center">
-                All Data <ArrowUpRight className="h-3 w-3 ml-1" />
+              <button
+                className="text-sm text-blue-600 hover:text-blue-700"
+                onClick={() => setShowAll((v) => !v)}
+                aria-expanded={showAll}
+                aria-controls="industry-ranking-table"
+              >
+                {showAll ? 'Show Less' : 'All Data'}
               </button>
             </div>
           </div>
-        </Card>
+        </div>
       </div>
+        
+      <Separator />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="p-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-6">
+        <div className="p-2">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-sm font-medium text-gray-900 ml-1">Recent Chats</h3>
@@ -479,22 +507,26 @@ export default function PromptItem() {
               <div className="col-span-4 text-center">Created</div>
             </div>
             {runs.map((r, i) => (
-              <Link
-                key={`run-${r.run_id}-${i}`}
-                to={`/chats/${encodeURIComponent(r.run_id)}`}
-                className="grid grid-cols-12 gap-2 text-sm py-3 hover:bg-gray-50 rounded w-full"
+              <button
+                key={`run-${r.run_id}-${r.model_id}-${i}`}
+                type="button"
+                onClick={() => openTrip({ run_id: r.run_id, model_id: r.model_id, prompt_id: promptId ?? null })}
+                className="grid grid-cols-12 gap-2 text-sm py-3 hover:bg-gray-50 rounded w-full text-left cursor-pointer"
+                title="Open chat"
               >
                 <div className="col-span-6">
                   <p className="line-clamp-2 text-gray-900">{r.snippet}</p>
                 </div>
                 <div className="col-span-2 text-center">{r.mentions}</div>
                 <div className="col-span-4 text-center text-gray-600">{new Date(r.created).toLocaleString()}</div>
-              </Link>
+              </button>
             ))}
           </div>
-        </Card>
+        </div>
 
-        <Card className="p-6">
+        <Separator orientation="vertical" />
+
+        <div className="p-2">
           <div className="mb-4">
             <h3 className="text-sm font-medium text-gray-900 ml-1">Sources</h3>
             <p className="text-sm text-gray-500 ml-1">Sources across active models</p>
@@ -521,7 +553,7 @@ export default function PromptItem() {
               </div>
             ))}
           </div>
-        </Card>
+        </div>
       </div>
     </div>
   );

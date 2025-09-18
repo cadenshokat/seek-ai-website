@@ -12,6 +12,7 @@ export interface DailyVisibilityData {
   mentions: number;
   total_runs: number;
   platform_id?: string;
+  avg_sentiment_score?: number | null;
 }
 
 export function useDailyVisibility(opts?: { ignoreBrandFilter?: boolean }) {

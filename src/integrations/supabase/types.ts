@@ -849,6 +849,7 @@ export type Database = {
           mentions: number | null
           platform_id: string | null
           total_runs: number | null
+          avg_sentiment_score: number | null
         }
         Relationships: []
       },
@@ -857,6 +858,7 @@ export type Database = {
           id: string
           sentence: string
           position: number
+          run_id: string
           date: string
           entity_id: string
           entity_type: string

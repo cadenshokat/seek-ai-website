@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ExternalLink } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -8,15 +7,24 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, ResponsiveContainer } from "recharts";
 import { useTimeRange } from "@/hooks/useTimeRange";
 import { useModels } from "@/hooks/useModels";
+import { Separator } from "@/components/ui/separator";
 
-type SourceRow = {
-  id: string;
+type DomainDailyRow = {
+  day_utc: string; // 'YYYY-MM-DD' (UTC)
   brand_id: string | null;
+  model_id: string | null;
+  domain: string;
+  mentions: number;
+};
+
+type UrlDailyRow = {
+  day_utc: string; // 'YYYY-MM-DD' (UTC)
+  brand_id: string | null;
+  model_id: string | null;
   url: string;
-  type: string;
-  date: string;
-  run_id: string | null;
-  prompt_id: string | null;
+  domain: string | null;
+  type: string | null;
+  mentions: number;
 };
 
 type Props = {
@@ -24,21 +32,21 @@ type Props = {
   limitTop?: number;
 };
 
-const hsl = (i: number) => `hsl(${i * 60}, 70%, 50%)`;
-const toDay = (d: string | Date) => {
+const color = (i: number) => `hsl(${(i * 53) % 360}, 70%, 50%)`;
+
+// Local day "YYYY-MM-DD"
+const localDay = (d: string | Date) => {
   const x = new Date(d);
-  const y = new Date(Date.UTC(x.getUTCFullYear(), x.getUTCMonth(), x.getUTCDate()));
-  return y.toISOString().slice(0, 10);
+  const y = new Date(x.getFullYear(), x.getMonth(), x.getDate());
+  return `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, "0")}-${String(y.getDate()).padStart(2, "0")}`;
 };
-const extractDomain = (u: string) => {
-  try {
-    const d = new URL(u).hostname.replace(/^www\./, "");
-    return d || u;
-  } catch {
-    const m = u.match(/^[a-z]+:\/\/([^/]+)/i);
-    return (m?.[1] || u).replace(/^www\./, "");
-  }
+
+// Labels like "Sep 05"
+const labelDay = (yyyy_mm_dd: string) => {
+  const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 };
+
 const typeClass = (t: string) => {
   const s = (t || "").toLowerCase();
   if (s.includes("ref")) return "bg-purple-100 text-purple-700 ring-1 ring-purple-200";
@@ -55,149 +63,170 @@ export default function Sources({ brandId, limitTop = 5 }: Props) {
   const { selectedRange } = useTimeRange();
   const { selectedModel } = useModels();
 
-  const [rows, setRows] = useState<SourceRow[]>([]);
+  const [domainRows, setDomainRows] = useState<DomainDailyRow[]>([]);
+  const [urlRows, setUrlRows] = useState<UrlDailyRow[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Pull pre-aggregated rows from views
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const startISO = new Date(selectedRange.start).toISOString();
-      const endISO = new Date(selectedRange.end).toISOString();
+      try {
+        const startDay = localDay(selectedRange.start); // 'YYYY-MM-DD'
+        const endDay = localDay(selectedRange.end);
 
-      if (selectedModel) {
-        const { data, error } = await supabase
-          .from("all_sources")
-          .select(`
-            id, brand_id, url, type, date, run_id, prompt_id,
-            run_logs!inner(model_id)
-          `)
-          .gte("date", startISO)
-          .lte("date", endISO)
-          .eq("run_logs.model_id", selectedModel)
-          .order("date", { ascending: true });
-        if (!error) setRows((data || []).map((d: any) => ({ id: d.id, brand_id: d.brand_id, url: d.url, type: d.type, date: d.date, run_id: d.run_id, prompt_id: d.prompt_id })));
-      } else {
-        let q = supabase
-          .from("all_sources")
-          .select("id, brand_id, url, type, date, run_id, prompt_id")
-          .gte("date", startISO)
-          .lte("date", endISO)
-          .order("date", { ascending: true });
-        if (brandId) q = q.eq("brand_id", brandId);
-        const { data, error } = await q;
-        if (!error) setRows((data || []) as SourceRow[]);
+        let qDomain = supabase
+          .from("domain_daily")
+          .select("day_utc,brand_id,model_id,domain,mentions")
+          .gte("day_utc", startDay)
+          .lte("day_utc", endDay)
+          .order("day_utc", { ascending: false })
+          .order("domain", { ascending: true });
+
+        let qUrl = supabase
+          .from("url_daily")
+          .select("day_utc,brand_id,model_id,url,domain,type,mentions")
+          .gte("day_utc", startDay)
+          .lte("day_utc", endDay)
+          .order("day_utc", { ascending: false });
+
+        if (selectedModel) {
+          qDomain = qDomain.eq("model_id", selectedModel);
+          qUrl = qUrl.eq("model_id", selectedModel);
+        }
+        if (brandId) {
+          qDomain = qDomain.eq("brand_id", brandId);
+          qUrl = qUrl.eq("brand_id", brandId);
+        }
+
+        const [{ data: dData, error: dErr }, { data: uData, error: uErr }] = await Promise.all([qDomain, qUrl]);
+        if (dErr) throw dErr;
+        if (uErr) throw uErr;
+
+        setDomainRows((dData || []) as DomainDailyRow[]);
+        setUrlRows((uData || []) as UrlDailyRow[]);
+      } catch (e) {
+        console.error("Failed to load daily aggregates", e);
+        setDomainRows([]);
+        setUrlRows([]);
+      } finally {
+        setLoading(false);
       }
-
-      setLoading(false);
     })();
-  }, [selectedRange.start, selectedRange.end, selectedModel, brandId]);
+  }, [selectedRange, selectedModel, brandId]);
 
-  const days = useMemo(() => {
-    const a: string[] = [];
-    const cur = new Date(selectedRange.start);
-    const last = new Date(selectedRange.end);
-    cur.setUTCHours(0, 0, 0, 0);
-    last.setUTCHours(0, 0, 0, 0);
-    while (cur <= last) {
-      a.push(cur.toISOString().slice(0, 10));
-      cur.setUTCDate(cur.getUTCDate() + 1);
+  // Build contiguous list of days (inclusive) based on the selected range
+  const days: string[] = useMemo(() => {
+    const out: string[] = [];
+    const start = new Date(
+      selectedRange.start.getFullYear(),
+      selectedRange.start.getMonth(),
+      selectedRange.start.getDate()
+    );
+    const end = new Date(
+      selectedRange.end.getFullYear(),
+      selectedRange.end.getMonth(),
+      selectedRange.end.getDate()
+    );
+    for (let d = start; d <= end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+      out.push(localDay(d));
     }
-    return a;
+    return out;
   }, [selectedRange]);
 
   const aggregates = useMemo(() => {
-    const totalCitations = rows.length || 1;
+    if (domainRows.length === 0 && urlRows.length === 0) {
+      return {
+        chart: [] as any[],
+        domainTable: [] as any[],
+        urlTable: [] as any[],
+        topDomains: [] as string[],
+      };
+    }
 
-    const domainCounts = new Map<string, number>();
-    const domainTypeCounts = new Map<string, Map<string, number>>();
-    const domainRunCitations = new Map<string, Map<string, number>>();
+    const dayTotals = new Map<string, number>();
+    for (const r of domainRows) {
+      dayTotals.set(r.day_utc, (dayTotals.get(r.day_utc) || 0) + r.mentions);
+    }
+
+    const domainTotals = new Map<string, number>();
     const domainDayCounts = new Map<string, Map<string, number>>();
+    for (const r of domainRows) {
+      domainTotals.set(r.domain, (domainTotals.get(r.domain) || 0) + r.mentions);
+      if (!domainDayCounts.has(r.domain)) domainDayCounts.set(r.domain, new Map());
+      const dmap = domainDayCounts.get(r.domain)!;
+      dmap.set(r.day_utc, (dmap.get(r.day_utc) || 0) + r.mentions);
+    }
 
-    const urlCounts = new Map<string, number>();
-    const urlRunCitations = new Map<string, Map<string, number>>();
-    const urlTypes = new Map<string, string>();
-    const urlDomains = new Map<string, string>();
-
-    rows.forEach((r) => {
-      const dom = extractDomain(r.url);
-      const day = toDay(r.date);
-      const run = r.run_id || r.id;
-
-      domainCounts.set(dom, (domainCounts.get(dom) || 0) + 1);
-
+    const domainTypeCounts = new Map<string, Map<string, number>>();
+    for (const u of urlRows) {
+      const dom = u.domain || "";
+      const typ = u.type || "other";
       if (!domainTypeCounts.has(dom)) domainTypeCounts.set(dom, new Map());
-      const dTypes = domainTypeCounts.get(dom)!;
-      dTypes.set(r.type, (dTypes.get(r.type) || 0) + 1);
+      const tmap = domainTypeCounts.get(dom)!;
+      tmap.set(typ, (tmap.get(typ) || 0) + u.mentions);
+    }
 
-      if (!domainRunCitations.has(dom)) domainRunCitations.set(dom, new Map());
-      const dRuns = domainRunCitations.get(dom)!;
-      dRuns.set(run, (dRuns.get(run) || 0) + 1);
+    const grandTotal = Array.from(dayTotals.values()).reduce((a, b) => a + b, 0) || 1;
 
-      if (!domainDayCounts.has(dom)) domainDayCounts.set(dom, new Map());
-      const dDays = domainDayCounts.get(dom)!;
-      dDays.set(day, (dDays.get(day) || 0) + 1);
-
-      urlCounts.set(r.url, (urlCounts.get(r.url) || 0) + 1);
-
-      if (!urlRunCitations.has(r.url)) urlRunCitations.set(r.url, new Map());
-      const uRuns = urlRunCitations.get(r.url)!;
-      uRuns.set(run, (uRuns.get(run) || 0) + 1);
-
-      if (!urlTypes.has(r.url)) urlTypes.set(r.url, r.type);
-      if (!urlDomains.has(r.url)) urlDomains.set(r.url, dom);
-    });
-
-    const domainTable = Array.from(domainCounts.entries())
-      .map(([domain, cnt]) => {
+    // Domain table (sorted by total mentions)
+    const domainTable = Array.from(domainTotals.entries())
+      .map(([domain, count]) => {
         const tCounts = domainTypeCounts.get(domain) || new Map();
         const topType = Array.from(tCounts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || "Other";
-        const runCit = domainRunCitations.get(domain) || new Map();
-        const avgCit = Array.from(runCit.values()).reduce((s, n) => s + n, 0) / (runCit.size || 1);
+        const avgPerDay = count / Math.max(days.length, 1);
         return {
           domain,
           type: topType,
-          usedPct: +(100 * (cnt / totalCitations)).toFixed(0),
-          avgCitations: +avgCit.toFixed(1),
-          count: cnt,
+          count,
+          usedPct: Math.round((count / grandTotal) * 100),
+          avgPerDay: Number(avgPerDay.toFixed(1)),
         };
       })
       .sort((a, b) => b.count - a.count);
 
-    const topDomains = domainTable.slice(0, limitTop).map((d) => d.domain);
+    const topDomains = domainTable.slice(0, Math.max(limitTop, 0)).map((d) => d.domain);
 
     const chart = days.map((day) => {
-      const dayTotal = rows.filter((r) => toDay(r.date) === day).length || 1;
-      const row: Record<string, number | string> = {
-        date: new Date(day).toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-      };
-      topDomains.forEach((dom) => {
-        const domDay = domainDayCounts.get(dom)?.get(day) || 0;
-        row[dom] = +((domDay / dayTotal) * 100).toFixed(1);
-      });
+      const dayTotal = dayTotals.get(day) || 0;
+      const row: Record<string, number | string> = { date: labelDay(day) };
+      for (const dom of topDomains) {
+        const c = domainDayCounts.get(dom)?.get(day) || 0;
+        row[dom] = dayTotal ? Number(((c / dayTotal) * 100).toFixed(1)) : 0;
+      }
       return row;
     });
 
-    const urlTable = Array.from(urlCounts.entries())
-      .map(([url, cnt]) => {
-        const dom = urlDomains.get(url) || extractDomain(url);
-        const type = urlTypes.get(url) || "Other";
-        const runCit = urlRunCitations.get(url) || new Map();
-        const avgCit = Array.from(runCit.values()).reduce((s, n) => s + n, 0) / (runCit.size || 1);
+    // URL table (aggregate url_daily across days)
+    const urlTotals = new Map<string, { count: number; type: string; domain: string }>();
+    for (const u of urlRows) {
+      const prev = urlTotals.get(u.url);
+      const nextCount = (prev?.count || 0) + u.mentions;
+      urlTotals.set(u.url, {
+        count: nextCount,
+        type: prev?.type ?? (u.type || "Other"),
+        domain: prev?.domain ?? (u.domain || ""),
+      });
+    }
+
+    const urlTable = Array.from(urlTotals.entries())
+      .map(([url, v]) => {
+        const avgPerDay = v.count / Math.max(days.length, 1);
         return {
           url,
-          domain: dom,
-          type,
-          usedPct: +(100 * (cnt / totalCitations)).toFixed(0),
-          avgCitations: +avgCit.toFixed(1),
-          count: cnt,
+          domain: v.domain,
+          type: v.type,
+          count: v.count,
+          usedPct: Math.round((v.count / grandTotal) * 100),
+          avgPerDay: Number(avgPerDay.toFixed(1)),
         };
       })
       .sort((a, b) => b.count - a.count);
 
     return { chart, domainTable, urlTable, topDomains };
-  }, [rows, days, limitTop]);
+  }, [domainRows, urlRows, days, limitTop]);
 
-  const seriesKeys = aggregates.topDomains;
+  const hasSeries = aggregates.topDomains.length > 0;
 
   if (loading) {
     return (
@@ -210,44 +239,71 @@ export default function Sources({ brandId, limitTop = 5 }: Props) {
 
   return (
     <Tabs defaultValue="domains" className="space-y-6">
-      <TabsList className="w-48">
+      <TabsList className="w-38 h-10">
         <TabsTrigger value="domains">Domains</TabsTrigger>
         <TabsTrigger value="urls">URLs</TabsTrigger>
       </TabsList>
 
       <TabsContent value="domains" className="space-y-4">
-        <Card className="p-6">
+        <div className="p-2">
           <div className="mb-4">
             <h3 className="text-sm font-medium text-gray-900">Source Usage by Domain</h3>
-            <p className="text-sm text-gray-500">Share of citations per day for the Top {seriesKeys.length} domains</p>
+            <p className="text-xs text-gray-500">
+              Share of citations per day for the Top {aggregates.topDomains.length || 0} domains
+            </p>
           </div>
-          <ChartContainer config={{ visibility: { label: "Usage %" } }} className="w-full h-[280] mt-9" style={{ height: 320 }}>
-            <ResponsiveContainer width="100%" aspect={8.5}>
+
+          <ChartContainer config={{ visibility: { label: "Usage %" } }} className="w-full mt-9" style={{ height: 350 }}>
+            <ResponsiveContainer width="100%" >
               <LineChart data={aggregates.chart} margin={{ top: 5, right: 30, left: 10, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6b7280" }} padding={{ left: 12, right: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#6b7280" }} tickFormatter={(v) => `${v}%`} />
+                <XAxis
+                  dataKey="date"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: "#6b7280" }}
+                  padding={{ left: 12, right: 12 }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 12, fill: "#6b7280" }}
+                  tickFormatter={(v) => `${v}%`}
+                />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                {seriesKeys.map((key, i) => (
-                  <Line key={key} type="monotone" dataKey={key} stroke={hsl(i)} strokeWidth={2} dot={{ r: 2 }} activeDot={{ r: 4 }} />
-                ))}
+                {hasSeries
+                  ? aggregates.topDomains.map((dom, i) => (
+                      <Line
+                        key={dom}
+                        type="monotone"
+                        dataKey={dom}
+                        stroke={color(i)}
+                        strokeWidth={2}
+                        dot={{ r: 2 }}
+                        activeDot={{ r: 4 }}
+                      />
+                    ))
+                  : null}
               </LineChart>
             </ResponsiveContainer>
           </ChartContainer>
-        </Card>
+        </div>
 
-        <Card className="p-0 overflow-hidden">
+        <Separator />
+
+        <div className="p-0 overflow-hidden">
           <div className="px-4 py-3 border-b">
-            <h4 className="text-sm font-medium text-gray-900">Source</h4>
+            <h4 className="text-sm font-medium text-gray-900">Domains</h4>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="text-left text-xs tracking-wide text-gray-500">
-                  <th className="px-4 py-2">Source</th>
-                  <th className="px-4 py-2">Type</th>
+                  <th className="px-4 py-2">Domain</th>
+                  <th className="px-4 py-2">Top Type</th>
+                  <th className="px-4 py-2 text-right">Count</th>
                   <th className="px-4 py-2 text-right">Used</th>
-                  <th className="px-4 py-2 text-right whitespace-nowrap">Avg. Citations</th>
+                  <th className="px-4 py-2 text-right whitespace-nowrap">Avg / Day</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -260,26 +316,30 @@ export default function Sources({ brandId, limitTop = 5 }: Props) {
                       </div>
                     </td>
                     <td className="px-4 py-2">
-                      <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${typeClass(r.type)}`}>{r.type}</span>
+                      <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${typeClass(r.type)}`}>
+                        {r.type}
+                      </span>
                     </td>
+                    <td className="px-4 py-2 text-right">{r.count}</td>
                     <td className="px-4 py-2 text-right">{r.usedPct}%</td>
-                    <td className="px-4 py-2 text-right">{r.avgCitations}</td>
+                    <td className="px-4 py-2 text-right">{r.avgPerDay}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       </TabsContent>
 
       <TabsContent value="urls" className="space-y-4">
-        <Card className="p-0 overflow-hidden">
+        <div className="p-0 overflow-hidden">
           <div className="px-4 py-3 border-b">
             <h4 className="text-sm font-medium text-gray-900">URLs</h4>
             <p className="text-xs text-gray-500">All URLs cited in chats for the selected period</p>
           </div>
-        </Card>
-        <Card className="p-0 overflow-hidden">
+        </div>
+        <Separator />
+        <div className="p-0 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">
               <thead>
@@ -287,8 +347,9 @@ export default function Sources({ brandId, limitTop = 5 }: Props) {
                   <th className="px-4 py-2">URL</th>
                   <th className="px-4 py-2">Domain</th>
                   <th className="px-4 py-2">Type</th>
+                  <th className="px-4 py-2 text-right">Count</th>
                   <th className="px-4 py-2 text-right">Used</th>
-                  <th className="px-4 py-2 text-right whitespace-nowrap">Avg. Citations</th>
+                  <th className="px-4 py-2 text-right whitespace-nowrap">Avg / Day</th>
                   <th className="px-4 py-2">Actions</th>
                 </tr>
               </thead>
@@ -296,18 +357,31 @@ export default function Sources({ brandId, limitTop = 5 }: Props) {
                 {aggregates.urlTable.map((u) => (
                   <tr key={u.url} className="hover:bg-gray-50">
                     <td className="px-4 py-2">
-                      <a href={u.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 break-words">
+                      <a
+                        href={u.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:text-blue-800 break-words"
+                      >
                         <span className="line-clamp-2 max-w-[70ch]">{u.url}</span>
                       </a>
                     </td>
                     <td className="px-4 py-2">{u.domain}</td>
                     <td className="px-4 py-2">
-                      <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${typeClass(u.type)}`}>{u.type}</span>
+                      <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs ${typeClass(u.type)}`}>
+                        {u.type}
+                      </span>
                     </td>
+                    <td className="px-4 py-2 text-right">{u.count}</td>
                     <td className="px-4 py-2 text-right">{u.usedPct}%</td>
-                    <td className="px-4 py-2 text-right">{u.avgCitations}</td>
+                    <td className="px-4 py-2 text-right">{u.avgPerDay}</td>
                     <td className="px-4 py-2">
-                      <Button variant="outline" size="sm" onClick={() => window.open(u.url, "_blank")} className="inline-flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(u.url, "_blank")}
+                        className="inline-flex items-center gap-1"
+                      >
                         <ExternalLink className="h-4 w-4" /> Open
                       </Button>
                     </td>
@@ -316,7 +390,7 @@ export default function Sources({ brandId, limitTop = 5 }: Props) {
               </tbody>
             </table>
           </div>
-        </Card>
+        </div>
       </TabsContent>
     </Tabs>
   );

@@ -38,52 +38,26 @@ export function ModelsProvider({ children }: { children: ReactNode }) {
       try {
         setLoading(true);
 
-        const { data: ws, error: wsError } = await supabase
-          .from("workspace")
-          .select("id")
-          .single();
-
-        if (wsError) throw wsError;
-
         const { data, error } = await supabase
-          .from("workspace_models")
-          .select("id, model_name, icon, is_enabled, workspace_id")
-          .eq("workspace_id", ws.id)
+          .from("platforms")
+          .select("id, name, logo, is_enabled")
           .eq("is_enabled", true)
-          .order("model_name");
+          .order("name");
 
         if (error) throw error;
 
         const mapped: Model[] = (data || []).map((m: any) => ({
           id: m.id as string,
-          name: m.model_name as string,
-          logo: m.icon || undefined,
+          name: m.name as string,
+          logo: m.logo || undefined,
         }));
 
         setModels(mapped);
 
-        // Keep selection if still valid; else reset to All (null)
         setSelectedModel((current) =>
           current && !mapped.some((mm) => mm.id === current) ? null : current
         );
 
-        // Realtime to reflect toggles
-        if (!channel) {
-          channel = supabase
-            .channel("workspace_models_changes")
-            .on(
-              "postgres_changes",
-              { event: "*", schema: "public", table: "workspace_models" },
-              (payload) => {
-                const newWs = (payload as any).new?.workspace_id;
-                const oldWs = (payload as any).old?.workspace_id;
-                if (newWs === ws.id || oldWs === ws.id) {
-                  fetchModels();
-                }
-              }
-            )
-            .subscribe();
-        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch models");
       } finally {

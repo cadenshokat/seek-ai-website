@@ -1,5 +1,5 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useBrands } from '@/hooks/useBrands';
 import { DailyVisibilityData } from '@/hooks/useDailyVisibility';
 
@@ -21,23 +21,37 @@ interface MentionsMetricsProps {
 
 export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
   const { getBrandOptions } = useBrands();
+  const [showAll, setShowAll] = useState(false);
 
-  const metrics = useMemo((): BrandMetric[] => {
+
+  const brandMetrics = useMemo((): BrandMetric[] => {
     const brandOptions = getBrandOptions;
     
-    // Group by entity and calculate averages
-    const entityMetrics: Record<string, { mentions: number[], totalRuns: number[] }> = {};
+    const entityMetrics: Record<string, { mentions: number[], totalRuns: number[], sentiments: number[] }> = {};
     
     data.forEach((item) => {
       if (!entityMetrics[item.entity_id]) {
-        entityMetrics[item.entity_id] = { mentions: [], totalRuns: [] };
+        entityMetrics[item.entity_id] = { mentions: [], totalRuns: [], sentiments: [] };
       }
       entityMetrics[item.entity_id].mentions.push(item.mentions);
       entityMetrics[item.entity_id].totalRuns.push(item.total_runs);
+
+      if (typeof item.avg_sentiment_score === 'number') {
+        entityMetrics[item.entity_id].sentiments.push(item.avg_sentiment_score);
+      }
     });
+
+    const avg = (arr: number[]) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+
+    const toPillPercent = (s: number) => {
+      const pct = ((s + 1) / 2) * 100;
+      return Math.max(0, Math.min(100, pct));
+    };
 
     const brandMetrics: BrandMetric[] = Object.entries(entityMetrics).map(([entityId, data], index) => {
       const brand = brandOptions.find(b => b.id === entityId);
+      const sentimentRaw = data.sentiments.length ? avg(data.sentiments) : null;
+      const sentiment = typeof sentimentRaw === 'number' ? toPillPercent(sentimentRaw): null;
       const avgMentions = data.mentions.reduce((a, b) => a + b, 0) / data.mentions.length;
       const avgTotalRuns = data.totalRuns.reduce((a, b) => a + b, 0) / data.totalRuns.length;
       const visibility = avgTotalRuns ? (avgMentions / avgTotalRuns) * 100 : 0;
@@ -47,23 +61,44 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
         name: brand?.name || 'Unknown',
         logo: brand?.logo || 'None',
         position: index + 1,
-        sentiment: 70 + Math.random() * 20, // Mock sentiment data
+        sentiment: sentiment, 
         visibility: Math.round(visibility),
         color: brand?.color,
-        mentions: avgMentions 
+        mentions: Math.round(avgMentions)
       };
     });
 
-    // Sort by visibility descending
     brandMetrics.sort((a, b) => b.visibility - a.visibility);
     
-    // Update positions
     brandMetrics.forEach((metric, index) => {
       metric.position = index + 1;
     });
 
-    return brandMetrics.slice(0, 5); // Top 5
+    return brandMetrics;
   }, [data, getBrandOptions]);
+
+  const metrics = useMemo(
+    () => (showAll ? brandMetrics : brandMetrics.slice(0, 5)),
+    [brandMetrics, showAll]
+  );
+
+  const SentimentPill = ({ n }: { n: number | null }) => {
+    if (n == null) return <span>—</span>;
+
+    const bgClass =
+      n >= 90 ? "bg-[#86efac]"
+      : n >= 70 ? "bg-[#bef264]"
+      : n >= 50 ? "bg-[#fde047]"
+      : n >= 30 ? "bg-[#fdba74]"
+      : "bg-[#fca5a5]";
+
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold">
+        <span className={`inline-block w-1.5 h-1.5 rounded-full ${bgClass}`} />
+        {n}
+      </span>
+    );
+  };
 
   if (loading) {
     return (
@@ -126,9 +161,8 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
                 </td>
                 <td className="py-2 text-center">
                   <div className="flex items-center justify-center space-x-1">
-                    <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                     <span className="text-xs text-gray-900">
-                      {Math.round(metric.sentiment)}
+                      <SentimentPill n={Math.round(metric.sentiment)}/>
                     </span>
                   </div>
                 </td>
@@ -148,9 +182,14 @@ export function MentionsMetrics({ data, loading }: MentionsMetricsProps) {
         </table>
       </div>
       
-      <div className="mt-4 pt-4 border-t border-gray-100">
-        <button className="text-sm text-blue-600 hover:text-blue-700">
-          All Data
+      <div className="mt-4">
+        <button
+          className="text-sm text-blue-600 hover:text-blue-700"
+          onClick={() => setShowAll((v) => !v)}
+          aria-expanded={showAll}
+          aria-controls="industry-ranking-table"
+        >
+          {showAll ? 'Show Less' : 'All Data'}
         </button>
       </div>
     </div>

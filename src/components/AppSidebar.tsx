@@ -12,10 +12,11 @@ import {
   SidebarMenuItem,
   SidebarHeader,
 } from '@/components/ui/sidebar';
+import { Separator } from '@/components/ui/separator'
 
 const navigationItems = [
   { title: 'Dashboard', url: '/', icon: Home },
-  { title: 'AI Optimization', url: '/optimization', icon: BarChart3 },
+  //{ title: 'AI Optimization', url: '/optimization', icon: BarChart3 },
   { title: 'Prompts', url: '/prompts', icon: FileText },
   { title: 'Chats', url: '/chats', icon: MessageSquare },
   { title: 'Sources', url: '/sources', icon: Globe },
@@ -32,15 +33,13 @@ const settingsItems = [
 export function AppSidebar() {
   return (
     <Sidebar className="border-r border-gray-200 bg-white">
-      <SidebarHeader className="p-6">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">H</span>
-          </div>
-          <span className="font-semibold text-gray-900">Hear.com</span>
+      <SidebarHeader className="p-5">
+        <div className="flex items-center space-x-2 text-2xl justify-center">
+          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="logo" className="w-8"/>
+          <span className="font-semibold text-gray-900">Seek.ai</span>
         </div>
       </SidebarHeader>
-      
+      <Separator/>
       <SidebarContent>
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-medium text-gray-500 tracking-wider mb-2">
@@ -70,9 +69,9 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        <SidebarGroup className="mt-8">
-          <SidebarGroupLabel className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+        <Separator />
+        <SidebarGroup className="mt-1">
+          <SidebarGroupLabel className="text-xs font-medium text-gray-500 tracking-wider mb-2">
             Preferences
           </SidebarGroupLabel>
           <SidebarGroupContent>
@@ -99,9 +98,9 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-
-        <SidebarGroup className="mt-8">
-          <SidebarGroupLabel className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+        <Separator />
+        <SidebarGroup className="mt-1">
+          <SidebarGroupLabel className="text-xs font-medium text-gray-500 tracking-wider mb-2">
             Settings
           </SidebarGroupLabel>
           <SidebarGroupContent>
