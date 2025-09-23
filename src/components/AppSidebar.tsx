@@ -21,30 +21,26 @@ const navigationItems = [
   { title: 'Chats', url: '/chats', icon: MessageSquare },
   { title: 'Sources', url: '/sources', icon: Globe },
   { title: 'Competitors', url: '/competitors', icon: Users },
-  { title: 'Tags', url: '/tags', icon: Tags },
+  //{ title: 'Tags', url: '/tags', icon: Tags },
 ];
 
 const settingsItems = [
-  { title: 'People', url: '/people', icon: Users },
-  { title: 'Workspace', url: '/workspace', icon: Settings },
-  { title: 'Company', url: '/company', icon: BarChart3 },
+  //{ title: 'People', url: '/people', icon: Users },
+  //{ title: 'Workspace', url: '/workspace', icon: Settings },
+  //{ title: 'Company', url: '/company', icon: BarChart3 },
 ];
 
 export function AppSidebar() {
   return (
     <Sidebar className="border-r border-gray-200 bg-white">
-      <SidebarHeader className="p-5">
+      <SidebarHeader className="p-2">
         <div className="flex items-center space-x-2 text-2xl justify-center">
-          <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="logo" className="w-8"/>
-          <span className="font-semibold text-gray-900">Seek.ai</span>
+          <img src={`${import.meta.env.BASE_URL}seek_logo.svg`} alt="logo" className="p-[2px] w-36 h-15"/>
         </div>
       </SidebarHeader>
       <Separator/>
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel className="text-xs font-medium text-gray-500 tracking-wider mb-2">
-            General
-          </SidebarGroupLabel>
+        <SidebarGroup className="mt-4">
           <SidebarGroupContent>
             <SidebarMenu>
               {navigationItems.map((item) => (
@@ -70,10 +66,8 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
         <Separator />
-        <SidebarGroup className="mt-1">
-          <SidebarGroupLabel className="text-xs font-medium text-gray-500 tracking-wider mb-2">
-            Preferences
-          </SidebarGroupLabel>
+        {/*<SidebarGroup className="mt-4">
+
           <SidebarGroupContent>
             <SidebarMenu>
               {settingsItems.map((item) => (
@@ -98,11 +92,8 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
-        <Separator />
-        <SidebarGroup className="mt-1">
-          <SidebarGroupLabel className="text-xs font-medium text-gray-500 tracking-wider mb-2">
-            Settings
-          </SidebarGroupLabel>
+        <Separator />*/}
+        <SidebarGroup className="mt-4">
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
