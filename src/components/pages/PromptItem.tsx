@@ -402,8 +402,12 @@ export default function PromptItem() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-4">
           <h1 className="text-xl font-medium text-gray-900 mb-2">{prompt.prompt}</h1>
+          <div className="p-2 flex items-center gap-2 border rounded-full bg-[#fafafa] text-sm">
+            <div className="rounded-full bg-[#bef264] h-1.5 w-1.5"/>
+            <div className="">{prompt.topic}</div>
+          </div>
           
         </div>
       </div>
