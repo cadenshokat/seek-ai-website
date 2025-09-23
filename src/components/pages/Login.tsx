@@ -70,10 +70,8 @@ export default function LoginForm({ className, ...props }: React.ComponentPropsW
 
       <div className="w-full max-w-xl p-24">
           
-        <div className="flex justify-center mb-2 p-6 gap-4">
-            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="logo" className="w-24"/>
-            <span className="font-bold text-6xl">Seek.ai</span>
-            
+        <div className="flex justify-center mb-2 p-2 gap-4">
+            <img src={`${import.meta.env.BASE_URL}seek_logo.svg`} alt="logo" className="w-60"/>            
         </div>
         <Separator className="bg-[#e5e5e5]"/>
           <div className="flex flex-col gap-4 items-center mt-6">

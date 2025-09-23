@@ -1,9 +1,10 @@
-
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useParams, Link } from 'react-router-dom';
-import { Clock, FileText } from 'lucide-react';
+import { Clock } from 'lucide-react';
 import LogoutButton from '@/components/LogoutButton'
 import { DynamicBreadcrumb } from '@/components/DynamicBreadcrumb'
+
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const routeNames: Record<string, string> = {
   '/': 'Dashboard',
@@ -19,11 +20,14 @@ const routeNames: Record<string, string> = {
   '/billing': 'Billing',
 };
 
-function next9amTomorrow(from: Date) {
+function next1315Daily(from: Date) {
   const d = new Date(from);
-  d.setDate(d.getDate() + 1);       
-  d.setHours(9, 0, 0, 0);           
-  return d;
+  const target = new Date(d);
+  target.setHours(13, 15, 0, 0); 
+  if (d >= target) {
+    target.setDate(target.getDate() + 1);
+  }
+  return target;
 }
 
 function formatHMS(ms: number) {
@@ -42,15 +46,15 @@ export function Header() {
   const isPromptPage = location.pathname.startsWith("/prompts");
 
   const [now, setNow] = useState(() => new Date());
-  const [target, setTarget] = useState(() => next9amTomorrow(new Date()));
+  const [target, setTarget] = useState(() => next1315Daily(new Date()));
 
   useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(id);
+    const handle = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(handle);
   }, []);
 
   useEffect(() => {
-    if (now >= target) setTarget(next9amTomorrow(now));
+    if (now >= target) setTarget(next1315Daily(now));
   }, [now, target]);
 
   const countdown = useMemo(
@@ -58,24 +62,35 @@ export function Header() {
     [now, target]
   );
 
-
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
       <div className="flex items-center justify-between">
         <DynamicBreadcrumb
           resolvers={{
-            prompt: (id) => /* e.g., promptTitles[id] */ undefined,
-            item:   (id) => /* e.g., itemTitles[id]   */ undefined,
-            chat:   (id) => /* e.g., chatTitles[id]   */ undefined,
-            section:(id) => /* e.g., sectionTitles[id]*/ undefined,
+            prompt: (id) => undefined,
+            item:   (id) => undefined,
+            chat:   (id) => undefined,
+            section:(id) => undefined,
           }}
         />
 
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 text-sm text-gray-500">
-            <Clock className="w-4 h-4" />
-            <span>{countdown}</span>
-          </div>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center space-x-2 text-sm text-gray-600 select-none cursor-default">
+                  <Clock className="w-4 h-4" />
+                  <span>{countdown}</span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs">
+                <p>
+                  <span className="font-medium text-xs">Next run at 1:15 PM EST</span>.
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <div className="flex items-center space-x-2 text-sm text-gray-500">
             <LogoutButton/>
           </div>
