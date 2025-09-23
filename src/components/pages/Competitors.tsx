@@ -289,7 +289,7 @@ export function Competitors() {
         </div>
       ) : filtered.length === 0 ? (
         <Card className="p-10 rounded-2xl border-dashed text-center">
-          <p className="text-sm text-muted-foreground">No competitors found for the current filters.</p>
+          <p className="text-sm text-muted-foreground">No competitors found for this brand. Please switch to hear.com.</p>
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
