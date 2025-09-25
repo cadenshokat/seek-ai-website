@@ -1,9 +1,9 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useLocation, useParams, Link } from 'react-router-dom';
 import { Clock } from 'lucide-react';
-import LogoutButton from '@/components/LogoutButton'
-import { DynamicBreadcrumb } from '@/components/DynamicBreadcrumb'
-
+import LogoutButton from '@/components/LogoutButton';
+import HelpButton from '@/components/HelpButton';
+import { DynamicBreadcrumb } from '@/components/DynamicBreadcrumb';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const routeNames: Record<string, string> = {
@@ -74,7 +74,7 @@ export function Header() {
           }}
         />
 
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2">
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -90,8 +90,8 @@ export function Header() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-
-          <div className="flex items-center space-x-2 text-sm text-gray-500">
+          <div className="flex items-center text-sm text-gray-500">
+            <HelpButton/>
             <LogoutButton/>
           </div>
         </div>
